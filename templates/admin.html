@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#08090e">
+<title>COSMOS77 — ops deck</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='27' fill='none' stroke='%23ff3b3b' stroke-width='5'/%3E%3Crect x='26' y='16' width='12' height='22' rx='5' fill='%23ffd400'/%3E%3Ccircle cx='32' cy='46' r='5' fill='%23ffd400'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<link rel="stylesheet" href="/static/css/arena.css">
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="statusbar">
+  <a class="brand" href="/">COSMOS77 <b>ARENA</b></a>
+  <span class="dot" id="dot" aria-hidden="true"></span>
+  <span class="statustext">OPS DECK — RESTRICTED</span>
+  <nav aria-label="site"><a href="/">Arena</a><a href="/league">League</a></nav>
+</header>
+
+<main class="wrap narrow rise">
+  <!-- login -->
+  <section class="panel" id="loginPanel" style="max-width:420px;margin:40px auto">
+    <p class="kicker">Operator clearance</p>
+    <label class="f" for="adPass">Admin password</label>
+    <input type="password" id="adPass" autocomplete="current-password">
+    <div style="margin-top:14px;display:flex;gap:12px;align-items:center">
+      <button class="btn btn--engage" id="adLogin" style="font-size:16px">Unlock</button>
+      <span class="sub mono" id="adLoginMsg"></span>
+    </div>
+  </section>
+
+  <!-- deck -->
+  <section id="deck" class="hidden">
+    <div class="warnbox" style="margin:18px 0">
+      <b>By design:</b> counted league games <b>cannot</b> be launched from this deck or any web
+      request — the hub answers <span class="mono">403</span> to <span class="mono">kind=counted</span>
+      everywhere. Counted runs are armed only from an SSH terminal
+      (<span class="mono">cosmos-hub-counted</span>), double-armed per the rules.
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <p class="kicker">Launch a run <span class="sub">(selfplay / f1 / f2 only)</span></p>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <div class="seg" id="adKind" role="group" aria-label="run kind">
+          <button data-kind="selfplay" aria-pressed="true">Selfplay</button>
+          <button data-kind="f1" aria-pressed="false">F1</button>
+          <button data-kind="f2" aria-pressed="false">F2</button>
+        </div>
+      </div>
+      <div id="adPeerFields" class="hidden">
+        <label class="f" for="adGid">Opponent gid</label>
+        <input type="text" id="adGid" maxlength="64">
+        <label class="f" for="adCop">Their cop URL</label>
+        <input type="url" id="adCop" maxlength="300" placeholder="https://…/mcp">
+        <label class="f" for="adThief">Their thief URL</label>
+        <input type="url" id="adThief" maxlength="300" placeholder="https://…/mcp">
+      </div>
+      <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn--engage" id="adRun" style="font-size:16px">Launch</button>
+        <button class="btn btn--danger" id="adStop">■ Stop run</button>
+        <button class="btn" id="adDryRun">Report dry-run</button>
+        <button class="btn btn--ghost" id="adLogs">Tail logs</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="kicker">Console</p>
+      <pre class="code" id="adOut" style="min-height:120px;margin-bottom:0">// ready</pre>
+    </div>
+  </section>
+
+  <footer class="foot">Admin session = HMAC cookie · report --send stays SSH-only · nothing here can arm counted.</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  function $(id) { return document.getElementById(id); }
+  var out = $("adOut");
+  function log(x) {
+    out.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2));
+  }
+  function call(path, opts) {
+    return fetch(path, Object.assign({
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+    }, opts)).then(function (r) {
+      if (r.status === 401 || r.status === 403) { show(false); throw new Error("clearance refused (" + r.status + ")"); }
+      if (!r.ok) throw new Error("backend answered " + r.status);
+      return r.json().catch(function () { return { http: r.status }; });
+    });
+  }
+  function show(authed) {
+    $("loginPanel").classList.toggle("hidden", authed);
+    $("deck").classList.toggle("hidden", !authed);
+  }
+  $("adLogin").addEventListener("click", function () {
+    $("adLoginMsg").textContent = "checking…";
+    call("/api/admin/login", { method: "POST", body: JSON.stringify({ password: $("adPass").value }) })
+      .then(function (j) { $("adLoginMsg").textContent = ""; show(true); log(j); })
+      .catch(function (e) { $("adLoginMsg").textContent = e.message; });
+  });
+  document.querySelectorAll("#adKind button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("#adKind button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      $("adPeerFields").classList.toggle("hidden", b.dataset.kind === "selfplay");
+    });
+  });
+  $("adRun").addEventListener("click", function () {
+    var kind = document.querySelector("#adKind button[aria-pressed='true']").dataset.kind;
+    var body = { kind: kind };
+    if (kind !== "selfplay") {
+      body.opponent_gid = $("adGid").value.trim() || null;
+      body.their_cop_url = $("adCop").value.trim() || null;
+      body.their_thief_url = $("adThief").value.trim() || null;
+    }
+    log("// launching " + kind + "…");
+    call("/api/admin/run", { method: "POST", body: JSON.stringify(body) }).then(log).catch(function (e) { log("// " + e.message); });
+  });
+  $("adStop").addEventListener("click", function () {
+    call("/api/admin/stop", { method: "POST", body: "{}" }).then(log).catch(function (e) { log("// " + e.message); });
+  });
+  $("adDryRun").addEventListener("click", function () {
+    call("/api/admin/report-dry-run", { method: "POST", body: "{}" }).then(log).catch(function (e) { log("// " + e.message); });
+  });
+  $("adLogs").addEventListener("click", function () {
+    call("/api/admin/logs", { method: "GET" }).then(function (j) {
+      log(j && j.lines ? j.lines.join("\n") : j);
+    }).catch(function (e) { log("// " + e.message); });
+  });
+  // if a session cookie already exists, /api/admin/logs succeeding unlocks the deck
+  call("/api/admin/logs", { method: "GET" }).then(function () { show(true); }).catch(function () { show(false); });
+}());
+</script>
+</body>
+</html>

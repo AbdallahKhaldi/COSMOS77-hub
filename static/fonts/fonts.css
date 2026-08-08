@@ -1,0 +1,47 @@
+/* COSMOS77 ARENA — self-hosted fonts (latin subsets, woff2 only).
+   Vendored once from Google Fonts (fonts.gstatic.com); served same-origin forever.
+   Licenses: see OFL-NOTICE.txt in this directory. Zero runtime external requests. */
+
+@font-face {
+  font-family: "Anton";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/anton-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/chakra-petch-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/static/fonts/chakra-petch-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/space-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/static/fonts/space-mono-700.woff2") format("woff2");
+}
+/* Inter ships as one variable file covering the whole weight axis. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/fonts/inter-var.woff2") format("woff2");
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#08090e">
+<title>COSMOS77 ARENA — replay cinema</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='27' fill='none' stroke='%23ffd400' stroke-width='5'/%3E%3Cpath d='M26 20 L46 32 L26 44 Z' fill='%23ffd400'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<link rel="stylesheet" href="/static/css/arena.css">
+<script type="importmap">
+{ "imports": {
+    "three": "/static/vendor/three-0.185.0/three.module.min.js",
+    "three/addons/": "/static/vendor/three-0.185.0/addons/"
+} }
+</script>
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="statusbar">
+  <a class="brand" href="/">COSMOS77 <b>ARENA</b></a>
+  <span class="dot" id="dot" aria-hidden="true"></span>
+  <span class="statustext" id="statustext" aria-live="polite">REPLAY CINEMA</span>
+  <nav aria-label="site">
+    <a href="/">Arena</a>
+    <a href="/docs">Challenge us</a>
+    <a href="/league">League</a>
+  </nav>
+</header>
+
+<main class="wrap rise">
+  <div class="stage-grid">
+    <section class="stage" id="stage" aria-label="replay viewer">
+      <div class="truth-label replay" id="truthLabel">
+        SETTLED GAME — <b>BIRD'S-EYE REPLAY (POST-AUDIT REVEAL)</b>
+      </div>
+      <div class="banner locked" id="verifyBadgeWrap" style="background:none;box-shadow:none;border:none;padding:0">
+        <span class="badge ok" id="verifyBadge">VERIFIED OK</span>
+      </div>
+      <div class="pill" id="metaPill">loading…</div>
+      <div class="slam" id="slam" aria-hidden="true">
+        <div class="word" id="slamWord"></div>
+        <div class="detail mono" id="slamDetail"></div>
+      </div>
+    </section>
+
+    <aside class="hud">
+      <div class="panel">
+        <h3>Windows</h3>
+        <div class="seg" id="windowSeg" role="group" aria-label="window selector"></div>
+        <p class="sub mono" id="stepLine" style="margin:9px 0 0">—</p>
+      </div>
+
+      <div class="panel">
+        <h3>Belief vs truth <span class="lit">· the signature overlay</span></h3>
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <div class="hitrate" id="hitrate">0%</div>
+          <div class="sub">ghost-on-target rate<br>(belief cell = true cell)</div>
+        </div>
+        <div class="toggles" style="margin-top:10px">
+          <button class="tgl" id="tglGhost" aria-pressed="true">Ghost trace</button>
+          <button class="tgl" id="tglTruth" aria-pressed="true">True path</button>
+          <button class="tgl" id="tglScent" aria-pressed="true">Scent</button>
+        </div>
+        <p class="sub" style="margin:9px 0 0">The <span style="color:#7ad7ff">cyan trace</span> is what our
+        agent <i>believed</i>; the <span class="c-thief">orange path</span> is where the opponent
+        actually drove — revealed only after settlement.</p>
+      </div>
+
+      <div class="panel">
+        <h3>Integrity</h3>
+        <p class="sub" style="margin:0">Every move is commit-sealed (SHA-256) and audited after the
+        window. The badge above flips to <b class="c-siren">TAMPERED</b> on any step whose reveal does
+        not match its commitment.</p>
+        <div id="verdictLine" class="mono sub" style="margin-top:8px">—</div>
+      </div>
+
+      <div class="panel" id="endcard" style="display:none">
+        <h3>Final tape</h3>
+        <table class="scoretab" id="scoreTable">
+          <thead><tr><th>window</th><th>result</th><th class="r-us">us</th><th class="r-them">them</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </aside>
+  </div>
+
+  <!-- scrubber -->
+  <div class="panel scrub" style="margin-top:16px">
+    <button class="btn" id="btnPlay" aria-label="play or pause">▶ PLAY</button>
+    <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="scrub timeline">
+    <div class="seg" id="speedSeg" role="group" aria-label="playback speed">
+      <button data-x="0.5">0.5x</button>
+      <button data-x="1" aria-pressed="true">1x</button>
+      <button data-x="4">4x</button>
+      <button data-x="16">16x</button>
+    </div>
+  </div>
+
+  <footer class="foot">
+    Bird's-eye is legal here and only here: settled games, positions mutually revealed by the audit
+    protocol. Live views show one agent's local truth only.
+  </footer>
+</main>
+
+<script type="module" src="/static/js/replay.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+"""Admin auth: HMAC cookie sessions, 401 walls, and the run/stop/logs surface."""
+
+from __future__ import annotations
+
+from starlette.testclient import TestClient
+
+from cosmos_hub import admin
+from cosmos_hub.app import create_app
+from tests.conftest import make_settings
+
+PROTECTED = (
+    ("post", "/api/admin/run", {"kind": "selfplay"}),
+    ("post", "/api/admin/stop", {}),
+    ("get", "/api/admin/logs", None),
+    ("post", "/api/admin/report-dry-run", {"run_id": "x"}),
+)
+
+
+def test_all_admin_endpoints_401_without_cookie(client):
+    for method, url, body in PROTECTED:
+        response = getattr(client, method)(url, json=body) if body is not None \
+            else client.get(url)
+        assert response.status_code == 401, url
+
+
+def test_wrong_password_401_and_no_cookie(client):
+    response = client.post("/api/admin/login", json={"password": "nope"})
+    assert response.status_code == 401
+    assert admin.COOKIE not in client.cookies
+
+
+def test_admin_disabled_when_no_password_configured(tmp_path, fake_procs):
+    app = create_app(make_settings(tmp_path, admin_password=None))
+    with TestClient(app) as client:
+        response = client.post("/api/admin/login", json={"password": ""})
+        assert response.status_code == 503
+
+
+def test_login_sets_cookie_and_unlocks(client, fake_procs):
+    assert client.post("/api/admin/login", json={"password": "hub-pw"}).status_code == 200
+    assert admin.COOKIE in client.cookies
+
+    response = client.post("/api/admin/run", json={"kind": "selfplay", "windows": 2})
+    assert response.status_code == 200
+    run_id = response.json()["run_id"]
+    assert run_id.startswith("selfplay-")
+
+    busy = client.post("/api/admin/run", json={"kind": "selfplay"})
+    assert busy.status_code == 409  # one active run at a time
+
+    stopped = client.post("/api/admin/stop", json={})
+    assert stopped.status_code == 200 and stopped.json()["stopped"] is True
+
+    logs = client.get("/api/admin/logs")
+    assert logs.status_code == 200 and any("standing" in n for n in logs.json()["logs"])
+    one = client.get("/api/admin/logs", params={"name": logs.json()["logs"][0]})
+    assert one.status_code == 200 and "tail" in one.json()
+
+
+def test_forged_or_expired_cookie_rejected(client):
+    client.cookies.set(admin.COOKIE, "123.deadbeef")
+    assert client.post("/api/admin/stop", json={}).status_code == 401
+    stale = admin.make_token(now=1.0)  # far past the TTL
+    client.cookies.set(admin.COOKIE, stale)
+    assert client.post("/api/admin/stop", json={}).status_code == 401
+
+
+def test_token_roundtrip_and_ttl():
+    token = admin.make_token(now=1000.0)
+    assert admin.token_valid(token, now=1000.0 + admin.SESSION_TTL_S)
+    assert not admin.token_valid(token, now=1000.0 + admin.SESSION_TTL_S + 1)
+    assert not admin.token_valid("garbage")
+    assert not admin.token_valid("")
+
+
+def test_report_dry_run_needs_settled_result(client):
+    client.post("/api/admin/login", json={"password": "hub-pw"})
+    response = client.post("/api/admin/report-dry-run", json={"run_id": "missing-run"})
+    assert response.status_code == 404
+    bad = client.post("/api/admin/report-dry-run", json={"run_id": "../escape"})
+    assert bad.status_code == 422

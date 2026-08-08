@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#08090e">
+<title>COSMOS77 — league ledger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='30' width='10' height='24' fill='%23ffd400'/%3E%3Crect x='27' y='18' width='10' height='36' fill='%232b7fff'/%3E%3Crect x='44' y='38' width='10' height='16' fill='%23ff8a1e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<link rel="stylesheet" href="/static/css/arena.css">
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+<header class="statusbar">
+  <a class="brand" href="/">COSMOS77 <b>ARENA</b></a>
+  <span class="dot" id="dot" aria-hidden="true"></span>
+  <span class="statustext" id="statustext">LEAGUE LEDGER</span>
+  <nav aria-label="site">
+    <a href="/">Arena</a>
+    <a href="/docs">Challenge us</a>
+    <a href="/league" aria-current="page">League</a>
+  </nav>
+</header>
+
+<main class="wrap narrow rise">
+  <section style="margin:26px 0 18px">
+    <p class="kicker">// every settled series, counted and friendly</p>
+    <h1 class="display" style="font-size:clamp(30px,5vw,44px)">The ledger</h1>
+    <p class="sub">Counted games are capped one-per-opponent by rule; friendlies are unlimited.
+    Settled series unlock their <a href="/replay/demo?demo=1">replay cinema</a>.</p>
+  </section>
+
+  <section class="panel" style="margin-bottom:16px">
+    <div style="display:flex;gap:26px;flex-wrap:wrap;text-align:center;justify-content:center">
+      <div><div class="display c-road" style="font-size:40px" id="stCounted">—</div><div class="sub">counted games</div></div>
+      <div><div class="display c-cop" style="font-size:40px" id="stWins">—</div><div class="sub">series wins</div></div>
+      <div><div class="display c-thief" style="font-size:40px" id="stFriendlies">—</div><div class="sub">friendlies</div></div>
+      <div><div class="display c-ok" style="font-size:40px" id="stVerified">—</div><div class="sub">verified ok</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="kicker">Settled runs</p>
+    <div style="overflow-x:auto">
+      <table class="scoretab" id="runsTable">
+        <thead><tr><th>run</th><th>opponent</th><th>kind</th><th class="r-us">us</th><th class="r-them">them</th><th>verdict</th><th>replay</th></tr></thead>
+        <tbody>
+          <tr><td colspan="7" class="sub mono" id="runsEmpty">loading ledger…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">Scores are settled by mutual audit — no referee, no host, two signatures.</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  function cell(txt, cls) {
+    var td = document.createElement("td");
+    td.textContent = txt == null ? "—" : String(txt);
+    if (cls) td.className = cls;
+    return td;
+  }
+  function fill(runs) {
+    var tbody = document.querySelector("#runsTable tbody");
+    tbody.innerHTML = "";
+    if (!runs || !runs.length) {
+      var tr0 = document.createElement("tr");
+      var td0 = cell("no settled runs yet — the city sleeps", "sub mono");
+      td0.colSpan = 7;
+      tr0.appendChild(td0);
+      tbody.appendChild(tr0);
+      return;
+    }
+    runs.forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(r.run_id || r.id));
+      tr.appendChild(cell(r.opponent_gid || r.opponent));
+      tr.appendChild(cell(r.kind));
+      var s = r.score || {};
+      tr.appendChild(cell(s.us != null ? s.us : r.us, "r-us"));
+      tr.appendChild(cell(s.them != null ? s.them : r.them, "r-them"));
+      tr.appendChild(cell(r.verdict || r.result));
+      var tdR = document.createElement("td");
+      if (r.settled !== false && (r.run_id || r.id)) {
+        var a = document.createElement("a");
+        a.href = "/replay/" + encodeURIComponent(r.run_id || r.id);
+        a.textContent = "▶ watch";
+        tdR.appendChild(a);
+      } else tdR.textContent = "—";
+      tr.appendChild(tdR);
+      tbody.appendChild(tr);
+    });
+  }
+  fetch("/api/status", { headers: { Accept: "application/json" } })
+    .then(function (r) { return r.json(); })
+    .then(function (st) {
+      var lg = (st && (st.ledger || st.league)) || {};
+      document.getElementById("stCounted").textContent = lg.counted != null ? lg.counted : "0";
+      document.getElementById("stWins").textContent = lg.wins != null ? lg.wins : "0";
+      document.getElementById("stFriendlies").textContent = lg.friendlies != null ? lg.friendlies : "0";
+      document.getElementById("stVerified").textContent = lg.verified != null ? lg.verified : "0";
+      var runs = st.runs || lg.runs;
+      if (runs) { fill(runs); return null; }
+      return fetch("/api/runs", { headers: { Accept: "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (j) { fill(Array.isArray(j) ? j : j.runs || []); });
+    })
+    .catch(function () {
+      document.getElementById("runsEmpty").textContent = "backend offline — ledger unavailable";
+    });
+}());
+</script>
+</body>
+</html>
