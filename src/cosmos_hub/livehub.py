@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -15,6 +16,8 @@ from .broadcast import PERSPECTIVES, Broadcaster
 from .config import Settings
 from .envelopes import EnvelopeLog
 from .events import RunTailer
+
+log = logging.getLogger(__name__)
 
 
 class LiveHub:
@@ -66,7 +69,9 @@ class LiveHub:
         try:
             self._stop = asyncio.Event()
             self._task = asyncio.get_running_loop().create_task(tailer.run(self._stop))
+            log.info("tailer running for %s", run_id)
         except RuntimeError:  # no loop (unit tests) — envelopes still flow, no tailer
+            log.warning("no running loop: tailer skipped for %s", run_id)
             self._stop, self._task = None, None
 
     def request_stop(self) -> None:
