@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections import defaultdict
+from collections import defaultdict, deque
 
 PERSPECTIVES = ("police", "thief")
 QUEUE_SIZE = 256
+HISTORY_SIZE = 2000
 Envelope = dict[str, object]
 
 
@@ -23,6 +24,7 @@ class Broadcaster:
         """Start with no clients; the owning loop is captured on first subscribe."""
         self._clients: dict[str, set[asyncio.Queue[Envelope]]] = defaultdict(set)
         self._loop: asyncio.AbstractEventLoop | None = None
+        self.history: deque[Envelope] = deque(maxlen=HISTORY_SIZE)
 
     def subscribe(self, perspective: str) -> asyncio.Queue[Envelope]:
         """Register a new client queue for *perspective* (loop-thread only)."""
@@ -50,8 +52,17 @@ class Broadcaster:
             return
         self._publish(envelope)
 
+    def history_for(self, perspective: str) -> list[Envelope]:
+        """Retained run envelopes for one perspective (replayed to late viewers)."""
+        return [e for e in self.history if e.get("perspective") == perspective]
+
+    def clear_history(self) -> None:
+        """A new run started: viewers must never see two runs stitched together."""
+        self.history.clear()
+
     def _publish(self, envelope: Envelope) -> None:
         perspective = str(envelope.get("perspective", ""))
+        self.history.append(envelope)
         for queue in list(self._clients.get(perspective, ())):
             if queue.full():
                 with contextlib.suppress(asyncio.QueueEmpty):  # racing consumer

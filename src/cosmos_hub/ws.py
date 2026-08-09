@@ -21,11 +21,26 @@ PING_INTERVAL_S = 20.0
 
 
 async def _pump(websocket: WebSocket, hub: LiveHub, perspective: str) -> None:
-    """Send snapshot-then-stream; queue subscription happens atomically after snapshot."""
-    snapshot = hub.log.snapshot_envelope(perspective)
+    """Catch a viewer up, then stream.
+
+    Mid-run: one composed snapshot (the rebase).  After a finished run: replay the
+    retained envelope history so even a seconds-fast game is fully watchable.  The
+    queue subscription happens FIRST so nothing published in between is lost (the
+    client's timeline dedupes by seq).
+    """
     queue = hub.broadcaster.subscribe(perspective)
+    snapshot = hub.log.snapshot_envelope(perspective)
+    payload = snapshot.get("payload") or {}
+    history = hub.broadcaster.history_for(perspective)
+    has_game = any(e.get("type") == "view" for e in history)
     try:
-        await websocket.send_json(snapshot)
+        if isinstance(payload, dict) and payload.get("view"):
+            await websocket.send_json(snapshot)  # live rebase
+        elif has_game:
+            for envelope in history:             # finished-run replay
+                await websocket.send_json(envelope)
+        else:
+            await websocket.send_json(snapshot)  # clean standing
         while True:
             try:
                 envelope = await asyncio.wait_for(queue.get(), timeout=PING_INTERVAL_S)

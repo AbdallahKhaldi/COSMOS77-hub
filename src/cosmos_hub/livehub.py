@@ -32,6 +32,7 @@ class LiveHub:
     def notify(self, event: str, payload: dict[str, Any]) -> None:
         """Manager callback (loop thread): drive envelopes and the tailer."""
         if event == "run_started":
+            self.broadcaster.clear_history()
             self.begin_run(str(payload["run_id"]))
             self.log.emit_both("status", {"state": "running", **payload})
             return

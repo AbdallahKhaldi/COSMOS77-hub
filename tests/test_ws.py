@@ -80,8 +80,15 @@ def test_snapshot_after_run_end_carries_no_dead_run_view(client):
         payload = envelope["payload"]
         assert "view" not in payload and "windows" not in payload and "final" not in payload
         assert payload["status"]["state"] == "standing"
-    # a NEW connection gets exactly that view-free standing snapshot
+    # a NEW connection replays the retained finished run (watchable even when the
+    # game settled in seconds); the dead view still never rides the snapshot itself
     with client.websocket_connect("/ws/live?perspective=police") as ws:
-        first = ws.receive_json()
-    assert first["type"] == "snapshot" and "view" not in first["payload"]
-    assert first["run_id"] == "standing"
+        replayed = [ws.receive_json() for _ in range(4)]
+    kinds = [e["type"] for e in replayed]
+    view = next(e for e in replayed if e["type"] == "view")
+    assert view["payload"]["step"] == 7 and "window_end" in kinds
+    # once a NEW run starts, history clears: a fresh viewer gets the clean snapshot
+    hub.notify("run_started", {"run_id": "f1-next", "kind": "f1"})
+    with client.websocket_connect("/ws/live?perspective=police") as ws:
+        clean = ws.receive_json()
+    assert clean["type"] == "snapshot" and "view" not in clean["payload"]
