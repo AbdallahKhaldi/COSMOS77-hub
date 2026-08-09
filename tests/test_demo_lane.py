@@ -15,7 +15,7 @@ def app_client(client: Any) -> Any:
 
 
 def test_demo_starts_a_one_window_selfplay(app_client: Any) -> None:
-    """A press admits through the gate and starts kind=selfplay windows=1."""
+    """A press admits through the DEMO gate and starts kind=selfplay windows=1."""
     calls: list[Any] = []
     manager = app_client.app.state.manager
     original = manager.start_run
@@ -30,15 +30,48 @@ def test_demo_starts_a_one_window_selfplay(app_client: Any) -> None:
     finally:
         manager.start_run = original
     assert response.status_code == 200
-    assert response.json() == {"run_id": "selfplay-test-0001", "watch": "live"}
+    assert response.json() == {"run_id": "selfplay-test-0001", "watch": "live",
+                               "joined": False}
     spec, source = calls[0]
     assert (spec.kind, spec.windows, source) == ("selfplay", 1, "demo")
     assert spec.their_cop_url is None and spec.their_thief_url is None
 
 
-def test_demo_shares_the_challenge_rate_budget(app_client: Any) -> None:
-    """The same gate that guards challenges guards the demo lane."""
-    gate = app_client.app.state.challenge_gate
+def test_press_during_a_live_run_joins_it_instead_of_refusing(app_client: Any) -> None:
+    """Watching an in-progress pursuit is free — no cooldown, no new run."""
+    from cosmos_hub.runspec import RunSpec
+
+    manager = app_client.app.state.manager
+    manager.active = RunSpec(kind="selfplay", opponent_gid="cosmos77-mirror",
+                             windows=1, out_stamp="selfplay-live-0042")
+    try:
+        response = app_client.post("/api/demo")
+    finally:
+        manager.active = None
+    assert response.status_code == 200
+    body = response.json()
+    assert body["joined"] is True and body["run_id"] == "selfplay-live-0042"
+
+
+def test_demo_gate_is_independent_of_the_challenge_gate(app_client: Any) -> None:
+    """An exhausted challenge quota must never route visitors to the tape."""
+    challenge_gate = app_client.app.state.challenge_gate
+    challenge_gate.count = 10**6
+    challenge_gate.day = "2099-01-01"  # force-exhausted
+    manager = app_client.app.state.manager
+    original = manager.start_run
+    manager.start_run = lambda spec, source="": "selfplay-free-0007"
+    try:
+        response = app_client.post("/api/demo")
+    finally:
+        manager.start_run = original
+        challenge_gate.count = 0
+    assert response.status_code == 200
+
+
+def test_demo_shares_the_demo_rate_budget(app_client: Any) -> None:
+    """The demo lane has its own (generous) gate; a refusal still maps to 429."""
+    gate = app_client.app.state.demo_gate
 
     def refuse() -> None:
         raise HTTPException(429, "cooldown: try again in 30s")

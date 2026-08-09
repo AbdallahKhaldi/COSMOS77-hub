@@ -65,24 +65,23 @@ def check_url(url: str, resolver: Resolver = default_resolver) -> None:
 class ChallengeGate:
     """In-memory cooldown + daily quota (clock injectable for tests)."""
 
-    def __init__(self, clock: Callable[[], float] = time.time) -> None:
+    def __init__(self, clock: Callable[[], float] = time.time,
+                 cooldown_s: float = COOLDOWN_S, daily: int = DAILY_LIMIT) -> None:
         """Track the last start and the per-UTC-day counter."""
-        self.clock = clock
-        self.last_start = float("-inf")
-        self.day = ""
-        self.count = 0
+        self.clock, self.cooldown_s, self.daily = clock, cooldown_s, daily
+        self.last_start, self.day, self.count = float("-inf"), "", 0
 
     def admit(self) -> None:
         """Raise 429 when the cooldown or the daily quota says no."""
         now = self.clock()
-        if now - self.last_start < COOLDOWN_S:
-            wait = int(COOLDOWN_S - (now - self.last_start)) + 1
+        if now - self.last_start < self.cooldown_s:
+            wait = int(self.cooldown_s - (now - self.last_start)) + 1
             raise HTTPException(429, f"cooldown: try again in {wait}s")
         day = time.strftime("%Y-%m-%d", time.gmtime(now))
         if day != self.day:
             self.day, self.count = day, 0
-        if self.count >= DAILY_LIMIT:
-            raise HTTPException(429, "daily challenge limit reached (10/day)")
+        if self.count >= self.daily:
+            raise HTTPException(429, f"daily limit reached ({self.daily}/day)")
 
     def note_started(self) -> None:
         """Record a successful start against the quota."""

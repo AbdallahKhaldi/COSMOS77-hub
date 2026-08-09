@@ -21,10 +21,18 @@ router = APIRouter()
 
 
 @router.post("/api/demo")
-async def start_demo(request: Request) -> dict[str, str]:
-    """Start a one-window public selfplay; the live WS feed carries it."""
-    gate: ChallengeGate = request.app.state.challenge_gate
+async def start_demo(request: Request) -> dict[str, str | bool]:
+    """Start a one-window public selfplay — or join the run already playing.
+
+    A press while a game is live ATTACHES the viewer to that game (watching is
+    free) instead of refusing; only true back-to-back restarts hit the short
+    demo cooldown, and the recorded tape remains the front-end's last resort.
+    """
+    gate: ChallengeGate = request.app.state.demo_gate
     manager: Manager = request.app.state.manager
+    active = manager.active
+    if active is not None:
+        return {"run_id": active.out_stamp, "watch": "live", "joined": True}
     gate.admit()  # raises HTTPException 429 on cooldown/quota
     spec = RunSpec(kind="selfplay", opponent_gid="cosmos77-mirror",
                    windows=1, out_stamp=fresh_stamp("selfplay"))
@@ -33,4 +41,4 @@ async def start_demo(request: Request) -> dict[str, str]:
     except RunRefusedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     gate.note_started()
-    return {"run_id": run_id, "watch": "live"}
+    return {"run_id": run_id, "watch": "live", "joined": False}

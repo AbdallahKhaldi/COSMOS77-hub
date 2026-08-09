@@ -272,6 +272,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
   }
 
   return {
+    showSlam: slam,
     render(state, meta) {
       runId = state.runId;
       renderBanner(state);

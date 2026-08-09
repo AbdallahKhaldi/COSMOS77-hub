@@ -287,15 +287,18 @@ function startDemo() {
   postJSON("/api/demo", {})
     .then(function (res) {
       demoDone = false;
-      director.reset(perspective, "attract");
+      if (!res.joined) director.reset(perspective, "attract");
       source = "live";
       hud.setSource("live");
-      openSocket(); // the live feed streams the new run as it plays
-      hud.sysLine("// LIVE — real game " + res.run_id + " (fresh strategy every press)");
+      openSocket(); // the live feed streams the run (snapshot catches us up if joining)
+      hud.sysLine(res.joined
+        ? "// JOINED — a live pursuit is already in progress (" + res.run_id + ")"
+        : "// LIVE — fresh pursuit " + res.run_id + " (different game every press)");
     })
     .catch(function (e) {
       var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "lane busy";
-      hud.sysLine("// live lane unavailable (" + why + ") — playing the recorded tape");
+      if (hud.showSlam) hud.showSlam("RECORDED TAPE", "tape", "live lane cooling down — " + why);
+      hud.sysLine("// ⚠ RECORDED TAPE (not live): " + why + " — press again shortly for a fresh game");
       startTape();
     });
 }
