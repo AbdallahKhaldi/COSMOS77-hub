@@ -38,6 +38,12 @@
       <button class="btn btn--copy" id="epCopBtn" data-copy="">COPY</button></div>
     <div class="urlrow"><span class="tag thief">THIEF</span><code id="epThief">loading…</code>
       <button class="btn btn--copy" id="epThiefBtn" data-copy="">COPY</button></div>
+    <div class="urlrow"><span class="tag" style="background:#2b3440;color:#ffd400">BOTH</span><code id="epRelay">loading…</code>
+      <button class="btn btn--copy" id="epRelayBtn" data-copy="">COPY</button></div>
+    <p class="sub"><b>Any URL shape works.</b> If your tooling dials one endpoint per role, use the
+    first two. If it dials <b>one URL for both roles</b> (the kit's sparring-peer pattern), use the
+    third — our relay routes odd windows to the cop and even to the thief automatically. Both shapes
+    work in both directions; nothing on your side needs to change.</p>
     <p class="sub" style="margin-bottom:0"><b class="mono">Probe note:</b> a bare browser
     <span class="mono">GET</span> on either URL answers <b class="mono">406 Not Acceptable</b>.
     That is the MCP streamable-HTTP <i>ready signal</i> — the state your netcheck should poll for —
@@ -54,6 +60,28 @@
     <div class="step"><b>Pheromones</b><p class="sub">Scent center intensity 0.9, decay 0.1, 5×5 stamp, min center 0.5 — the perceived field you see as decals in the viewer.</p></div>
     <div class="step"><b>Network &amp; league</b><p class="sub">Response timeout 30s, watchdog 60s, 6 sub-games per series, token budget 200k per series.</p></div>
     <div class="step"><b>Rate limits</b><p class="sub">30 req/min, 2 concurrent, backoff 5s ×3 retries, queue depth 100 — the public challenge lane is additionally rate-limited hub-side.</p></div>
+  </section>
+
+  <section class="panel panel--gold" style="margin-bottom:16px">
+    <p class="kicker">The doctor — test your setup against us in ten seconds</p>
+    <p class="sub">Paste your endpoint(s) and we probe them the way a real pairing would: reachability,
+    the MCP tool contract, locked-model identification, one clearly-labeled <b>friendly</b> greeting
+    (never counted), and — if something is off — the exact one-line fix to apply. Runs the same
+    staged probe we use before every game.</p>
+    <label class="f" for="drCop">Your cop MCP URL</label>
+    <input type="url" id="drCop" placeholder="https://…/cop/mcp" maxlength="300">
+    <label class="f" for="drThief">Your thief MCP URL</label>
+    <input type="url" id="drThief" placeholder="https://…/thief/mcp" maxlength="300">
+    <label class="f" for="drSingle">…or one URL for both roles</label>
+    <input type="url" id="drSingle" placeholder="https://…/mcp (leave the two above empty)" maxlength="300">
+    <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn--engage" id="drGo" style="font-size:16px">Run the doctor</button>
+      <span class="sub mono" id="drStatus" aria-live="polite"></span>
+    </div>
+    <div id="drOut" style="display:none;margin-top:12px">
+      <div id="drSummary" class="mono" style="font-weight:700;margin-bottom:8px"></div>
+      <div id="drStages"></div>
+    </div>
   </section>
 
   <section class="panel" style="margin-bottom:16px">
@@ -112,6 +140,8 @@
       var thief = eps.thief || eps.thief_url || "";
       if (cop) { $("epCop").textContent = cop; $("epCopBtn").setAttribute("data-copy", cop); }
       if (thief) { $("epThief").textContent = thief; $("epThiefBtn").setAttribute("data-copy", thief); }
+      var relay = location.origin + "/mcp";
+      $("epRelay").textContent = relay; $("epRelayBtn").setAttribute("data-copy", relay);
     })
     .catch(function () {
       $("epCop").textContent = "(backend offline)";
@@ -122,6 +152,83 @@
       var text = btn.getAttribute("data-copy") || "";
       if (navigator.clipboard && text) navigator.clipboard.writeText(text);
     });
+  });
+  var STAGE_ORDER = ["reach", "contract", "handshake", "locks", "uid", "forensics", "topology"];
+  function chip(status) {
+    var colors = { green: "#3fce8f", yellow: "#ffd400", red: "#ff7b72" };
+    var el = document.createElement("span");
+    el.className = "mono";
+    el.style.cssText = "display:inline-block;min-width:64px;font-weight:700;color:" +
+      (colors[status] || "#9aa4b0");
+    el.textContent = (status || "?").toUpperCase();
+    return el;
+  }
+  function renderDoctor(report) {
+    var stages = report.stages || {};
+    var box = $("drStages");
+    box.textContent = "";
+    STAGE_ORDER.forEach(function (name) {
+      var st = stages[name];
+      if (!st) return;
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:10px;align-items:baseline;padding:6px 0;" +
+        "border-bottom:1px solid rgba(255,255,255,.07)";
+      row.appendChild(chip(st.status));
+      var body = document.createElement("div");
+      var label = document.createElement("b");
+      label.textContent = name + " — ";
+      body.appendChild(label);
+      body.appendChild(document.createTextNode(st.finding || ""));
+      if (st.fix_line) {
+        var fix = document.createElement("div");
+        fix.className = "mono sub";
+        fix.style.cssText = "margin-top:4px;color:#ffd400";
+        fix.textContent = "fix: " + st.fix_line;
+        var cp = document.createElement("button");
+        cp.className = "btn btn--copy";
+        cp.textContent = "COPY FIX";
+        cp.style.marginLeft = "8px";
+        cp.addEventListener("click", function () {
+          if (navigator.clipboard) navigator.clipboard.writeText(st.fix_line);
+        });
+        fix.appendChild(cp);
+        body.appendChild(fix);
+      }
+      row.appendChild(body);
+      box.appendChild(row);
+    });
+    var s = report.summary || {};
+    var head = $("drSummary");
+    var colors = { green: "#3fce8f", yellow: "#ffd400", red: "#ff7b72" };
+    head.style.color = colors[s.status] || "#9aa4b0";
+    head.textContent = "VERDICT: " + (s.status || "?").toUpperCase() +
+      ((s.next_actions && s.next_actions.length) ? " — " + s.next_actions[0] : "");
+    $("drOut").style.display = "";
+  }
+  $("drGo").addEventListener("click", function () {
+    var single = $("drSingle").value.trim();
+    var body = single ? { url: single } :
+      { cop_url: $("drCop").value.trim(), thief_url: $("drThief").value.trim() };
+    if (!single && !body.cop_url && !body.thief_url) {
+      $("drStatus").textContent = "enter at least one URL";
+      return;
+    }
+    $("drStatus").textContent = "probing… (a few seconds)";
+    fetch("/api/doctor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          $("drStatus").textContent = "refused: " + (res.j.detail || "try again shortly");
+          return;
+        }
+        $("drStatus").textContent = "done in " + (res.j.elapsed_ms || "?") + " ms";
+        renderDoctor(res.j);
+      })
+      .catch(function (e) { $("drStatus").textContent = "backend offline — " + e.message; });
   });
   $("pgGo").addEventListener("click", function () {
     var body = {
