@@ -201,21 +201,34 @@ export function initMenu({ page = "arena", onStartDemo = null } = {}) {
     const box = $("runsList");
     if (!box) return;
     box.innerHTML = "";
-    box.appendChild(runRow({ rid: "demo-tape", meta: "fixture · 2 windows", watch: "/replay/demo?demo=1" }));
+    box.appendChild(runRow({ rid: "demo-tape", meta: "real settled selfplay · 1 window", watch: "/replay/demo-tape?demo=1" }));
     try {
       const runs = await getJSON("/api/runs");
-      const arr = Array.isArray(runs) ? runs : [];
+      // /api/runs answers the envelope {"runs":[...]}; accept a bare array too
+      const arr = Array.isArray(runs) ? runs
+        : (runs && Array.isArray(runs.runs) ? runs.runs : []);
       let shown = 0;
       for (const r of arr) {
         if (!r || !r.run_id) continue;
         if (r.settled === false) continue; // settled games only — legality
         const noReplay = r.has_replay === false || r.replay === false || r.replay_available === false;
-        const sc = r.score && typeof r.score === "object" ? r.score : r;
-        const scoreTxt = (sc.us ?? "—") + "–" + (sc.them ?? "—");
-        const meta = [r.opponent_gid, r.kind, scoreTxt, r.verdict].filter(Boolean).join(" · ");
+        // fields the API serves today: run_id, settled, windows_logged, replay,
+        // mtime — richer fields (opponent_gid/kind/score/verdict) render when a
+        // future server adds them.
+        const bits = [];
+        if (r.opponent_gid) bits.push(r.opponent_gid);
+        if (r.kind) bits.push(r.kind);
+        const sc = r.score && typeof r.score === "object" ? r.score : null;
+        if (sc && (sc.us != null || sc.them != null)) bits.push((sc.us ?? "—") + "–" + (sc.them ?? "—"));
+        if (r.verdict) bits.push(r.verdict);
+        if (!bits.length) {
+          const w = Number(r.windows_logged) || 0;
+          bits.push(w + (w === 1 ? " window" : " windows"));
+          if (r.mtime) bits.push(new Date(r.mtime * 1000).toLocaleDateString());
+        }
         box.appendChild(runRow({
           rid: r.run_id,
-          meta: meta + (noReplay ? " · no replay" : ""),
+          meta: bits.join(" · ") + (noReplay ? " · no replay" : ""),
           watch: noReplay ? null : "/replay/" + encodeURIComponent(r.run_id),
         }));
         shown += 1;

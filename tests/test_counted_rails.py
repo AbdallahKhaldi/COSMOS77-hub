@@ -64,7 +64,7 @@ def test_web_run_argvs_never_contain_counted(settings):
         spec = web_runspec({"kind": kind, "opponent_gid": "rival",
                             "their_cop_url": "https://a.example/mcp",
                             "their_thief_url": "https://a.example/mcp"})
-        for role in ("cop", "thief"):
+        for role in argvs.active_roles(spec, settings):
             assert "--counted" not in argvs.run_argv(role, spec, settings)
 
 

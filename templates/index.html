@@ -79,17 +79,22 @@
               title="collapse the tactical panel">▾</button>
     </div>
     <div class="tac-body" id="tacBody">
-      <div class="seg" id="hmSeg" role="group" aria-label="heatmap layer" style="margin-bottom:9px">
-        <button data-layer="belief" aria-pressed="true">Belief</button>
-        <button data-layer="scent" aria-pressed="false">Scent</button>
+      <div class="seg" id="hmSeg" role="group" aria-label="heatmap layer" style="margin-bottom:4px">
+        <button data-layer="belief" aria-pressed="true" title="our tracker's estimate of the opponent's cell">Belief</button>
+        <button data-layer="scent" aria-pressed="false" title="the raw pheromone field we perceive">Scent</button>
       </div>
+      <p class="sub" id="hmExplain" style="margin:0 0 7px;font-size:11.5px">
+        <b class="c-road">BELIEF</b> = where we think THEY are (computed FROM the scent).
+        <b>SCENT</b> = the raw pheromone field we can smell.</p>
       <div class="heatmap" id="heatmap" role="img" aria-label="belief heatmap over the 7 by 7 board"></div>
       <div class="hm-legend" id="hmLegend"><span>POSTERIOR P(OPPONENT)</span><span>no data</span></div>
       <div class="toggles">
         <button class="tgl" id="tglScent" aria-pressed="true">3D scent decals</button>
       </div>
       <p class="sub tacnote">The opponent appears only as the labeled
-      <b class="c-road">BELIEF</b> hologram — our posterior, never their truth.</p>
+      <b class="c-road">BELIEF</b> hologram — our posterior, never their truth.
+      Want to see <b>both cars</b>? That's legal only for settled games —
+      <a href="/replay/demo-tape?demo=1" style="color:#ffd400">open the replay cinema ▶</a></p>
     </div>
   </div>
 </div>
@@ -254,13 +259,16 @@ const rig = { vehicle: vehicleFor(perspective), ghost, scent, barriers, trail };
 const director = createDirector({ arena, timeline, hud, rig });
 
 let socket = null;
+let demoResume = false; // perspective switches resume the shared tape; START rewinds
 function openSocket() {
   const opts = {
     perspective,
+    resume: demoResume,
     onEnvelope: (env) => director.onEnvelope(env),
     onLink: (s) => { if (s === "demo-done") demoDone = true; hud.setLink(s); },
   };
   socket = source === "demo" ? connectDemo(opts) : connectLive(opts);
+  demoResume = false;
 }
 
 function setSource(next) {
@@ -274,6 +282,7 @@ function setSource(next) {
 function startDemo() {
   if (socket) socket.close();
   demoDone = false;
+  demoResume = false; // the button always rewinds the tape
   director.reset(perspective, "attract");
   source = "demo";
   hud.setSource("demo");
@@ -282,6 +291,7 @@ function startDemo() {
 
 function switchPerspective(p) {
   if (socket) socket.close();       // never two perspectives at once
+  demoResume = true;                // same tape moment, other agent's truth
   perspective = p;
   const wasLive = director.mode === "live";
   rig.vehicle = vehicleFor(p);      // CHASE lands behind the newly selected car

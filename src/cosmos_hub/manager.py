@@ -1,11 +1,9 @@
 """Subprocess lifecycle: standing serve <-> configured runs (contract: Run lifecycle).
 
-Two-process rule: the hub only ever SPAWNS the agent repos with ``cwd=<repo>`` — never
-imports them.  One active run at a time; on run end both agents return to standing; a
-hold-file (SSH counted run) makes the manager stand down until removed.  A third
-standing subprocess — the window-parity sparring relay behind public ``/mcp`` — is
-tracked and healed like the agents but never gates run settlement.  Public methods
-take an RLock: routes call them on the loop, the supervisor ticks in a worker thread.
+Two-process rule: the hub only SPAWNS the agent repos (``cwd=<repo>``), never imports
+them.  One run at a time; a hold-file (SSH counted run) stands the manager down; the
+``/mcp`` window-parity relay is healed like the agents but never gates settlement.
+RLock everywhere: routes call on the loop, the supervisor ticks in a worker thread.
 """
 
 from __future__ import annotations
@@ -18,7 +16,6 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable
-from typing import IO
 
 from . import argvs
 from .config import RELAY, ROLES, Settings
@@ -36,18 +33,16 @@ class Manager:
         self.settings, self.notify = settings, notify or (lambda _e, _p: None)
         self.procs: dict[str, subprocess.Popen[bytes]] = {}
         self.active: RunSpec | None = None
-        self._logs: list[IO[bytes]] = []
-        self._lock = threading.RLock()
+        self._logs, self._lock = [], threading.RLock()  # open log handles + state lock
 
     def _spawn(self, name: str, argv: list[str], tag: str) -> subprocess.Popen[bytes]:
         """Start one subprocess, logging its output under the hub data dir."""
         self.settings.logs_dir.mkdir(parents=True, exist_ok=True)
         out = open(self.settings.logs_dir / f"{name}-{tag}.log", "ab")  # noqa: SIM115
         self._logs.append(out)
-        proc = subprocess.Popen(
-            argv, cwd=str(self.settings.repo(name)), env=argvs.spawn_env(),
-            stdout=out, stderr=subprocess.STDOUT, start_new_session=True,
-        )
+        proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)),
+                                env=argvs.spawn_env(), stdout=out,
+                                stderr=subprocess.STDOUT, start_new_session=True)
         log.info("spawned %s (%s) pid=%d", name, tag, proc.pid)
         return proc
 
@@ -95,12 +90,14 @@ class Manager:
             if self.active is not None:
                 raise RunRefusedError("a run is already active (one at a time)")
             self._kill_all()
-            for role in ROLES:
-                self.settings.runs_dir(role, spec.out_stamp).mkdir(parents=True, exist_ok=True)
+            for out in argvs.run_out_dirs(spec, self.settings):
+                out.mkdir(parents=True, exist_ok=True)
+            for role in argvs.active_roles(spec, self.settings):
                 self.procs[role] = self._spawn(
                     role, argvs.run_argv(role, spec, self.settings), spec.out_stamp
                 )
-            self.procs[RELAY] = self._spawn(RELAY, argvs.relay_argv(), spec.out_stamp)
+            relay = argvs.relay_argv(spec, self.settings)
+            self.procs[RELAY] = self._spawn(RELAY, relay, spec.out_stamp)
             self.active = spec
         self.notify("run_started", {"run_id": spec.out_stamp, "kind": spec.kind,
                                     "opponent": spec.opponent_gid, "windows": spec.windows})
@@ -124,16 +121,18 @@ class Manager:
 
     def agents_alive(self) -> dict[str, bool]:
         """Liveness of every tracked subprocess — both agents plus the relay."""
-        return {name: (name in self.procs and self.procs[name].poll() is None)
-                for name in (*ROLES, RELAY)}
+        return {n: n in self.procs and self.procs[n].poll() is None for n in (*ROLES, RELAY)}
 
     def tick(self) -> None:
         """One supervision step: honor the hold file, reap ended runs, heal standing."""
         with self._lock:
             if self.hold_active():
-                if self.procs:
+                if self.procs:  # a killed web run is OVER — never resumable post-hold
                     log.info("hold file present: releasing ports for the SSH counted run")
+                    ended, self.active = self.active, None
                     self._kill_all()
+                    if ended is not None:
+                        self.notify("run_stopped", {"run_id": ended.out_stamp})
                 return
             if self.active is not None:
                 if all(self.procs[r].poll() is not None for r in ROLES if r in self.procs):
@@ -142,8 +141,8 @@ class Manager:
                     self.notify("run_ended", {"run_id": ended.out_stamp, "kind": ended.kind})
                     self.start_standing()
                 elif RELAY not in self.procs or self.procs[RELAY].poll() is not None:
-                    self.procs[RELAY] = self._spawn(RELAY, argvs.relay_argv(),
-                                                    self.active.out_stamp)
+                    relay = argvs.relay_argv(self.active, self.settings)
+                    self.procs[RELAY] = self._spawn(RELAY, relay, self.active.out_stamp)
                 return
             if not self.procs or any(p.poll() is not None for p in self.procs.values()):
                 self._kill_all()

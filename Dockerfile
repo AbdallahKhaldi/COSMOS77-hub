@@ -16,11 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
+# The .git dirs are KEPT: the agents seal Step-0/report `github_commit` via
+# `git rev-parse HEAD` (rule 53 — bare 40-hex, no env/file fallback exists), so
+# stripping them would make every counted run declare "unknown".  Image size is the
+# accepted cost.  COMMITS records the played SHAs for operator visibility (kept
+# OUTSIDE the repos so `git status` stays clean for the dirty-tree counted check).
 RUN git clone "$(echo "$COP_REPO_URL" | sed "s#https://#https://${GIT_AUTH}#")" COSMOS77-cop \
     && git -C COSMOS77-cop checkout "$COP_REF" \
     && git clone "$(echo "$THIEF_REPO_URL" | sed "s#https://#https://${GIT_AUTH}#")" COSMOS77-thief \
     && git -C COSMOS77-thief checkout "$THIEF_REF" \
-    && rm -rf COSMOS77-cop/.git COSMOS77-thief/.git
+    && { echo "COP_COMMIT=$(git -C COSMOS77-cop rev-parse HEAD)"; \
+         echo "THIEF_COMMIT=$(git -C COSMOS77-thief rev-parse HEAD)"; } > /app/COMMITS \
+    && cat /app/COMMITS
 
 COPY . /app/COSMOS77-hub
 
@@ -30,7 +37,10 @@ RUN cd /app/COSMOS77-cop && uv sync --no-dev \
 
 FROM debian:bookworm-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+# git ships in the runtime image: the agents run `git rev-parse HEAD` at serve time
+# to seal the counted github_commit (rule 53) — without the binary the kept .git
+# dirs above would still resolve to "unknown".
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /opt/uv/python /opt/uv/python
 COPY --from=build /app /app

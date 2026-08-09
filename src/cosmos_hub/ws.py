@@ -14,7 +14,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .broadcast import PERSPECTIVES
-from .events import LiveHub
+from .livehub import LiveHub
 
 router = APIRouter()
 PING_INTERVAL_S = 20.0

@@ -35,6 +35,7 @@ class Settings:
     data_dir: Path = HUB_ROOT / "data"
     templates_dir: Path = HUB_ROOT / "templates"
     static_dir: Path = HUB_ROOT / "static"
+    volume_backed: bool = False  # HUB_DATA_DIR set ⇒ data_dir is a mounted volume
     gmail_credentials_b64: str | None = field(default=None, repr=False)
     gmail_token_b64: str | None = field(default=None, repr=False)
 
@@ -42,9 +43,32 @@ class Settings:
         """Working directory for *name*: ``thief`` → thief repo, else cop (relay too)."""
         return self.thief_repo if name == "thief" else self.cop_repo
 
+    @property
+    def runs_root(self) -> Path:
+        """All run artifacts live on the hub data volume, never the ephemeral repos."""
+        return self.data_dir / "runs"
+
     def runs_dir(self, role: str, stamp: str) -> Path:
-        """Artifact directory a run writes under *role*'s repo (each side keeps its own)."""
-        return self.repo(role) / "runs" / stamp
+        """Per-role artifact directory (selfplay: each side keeps its own tree)."""
+        return self.runs_root / role / stamp
+
+    def shared_runs_dir(self, stamp: str) -> Path:
+        """ONE shared artifact directory both agents write for a real-opponent series."""
+        return self.runs_root / "shared" / stamp
+
+    def run_dirs(self, stamp: str) -> list[Path]:
+        """Every directory a run may have written (shared first, then per-role)."""
+        return [self.shared_runs_dir(stamp), *(self.runs_dir(r, stamp) for r in ROLES)]
+
+    @property
+    def ledger_file(self) -> Path:
+        """Volume twin of the cop repo's rule-52 ledger (survives redeploys)."""
+        return self.data_dir / "league_ledger.json"
+
+    @property
+    def repo_ledger_file(self) -> Path:
+        """Where the agents read/write the rule-52 ledger (cop repo, git-committed)."""
+        return self.cop_repo / "artifacts" / "league_ledger.json"
 
     @property
     def replays_dir(self) -> Path:
@@ -91,12 +115,23 @@ def load(env: Mapping[str, str] | None = None) -> Settings:
         data_dir=Path(env.get("HUB_DATA_DIR", str(HUB_ROOT / "data"))),
         templates_dir=Path(env.get("HUB_TEMPLATES_DIR", str(HUB_ROOT / "templates"))),
         static_dir=Path(env.get("HUB_STATIC_DIR", str(HUB_ROOT / "static"))),
+        volume_backed=bool(env.get("HUB_DATA_DIR")),
         gmail_credentials_b64=env.get("GMAIL_CREDENTIALS_B64") or None,
         gmail_token_b64=env.get("GMAIL_TOKEN_B64") or None,
     )
 
 
 def ensure_dirs(settings: Settings) -> None:
-    """Create the hub-owned data directories (volume-safe, idempotent)."""
-    for path in (settings.replays_dir, settings.logs_dir, settings.hold_file.parent):
+    """Create the hub-owned data directories and migrate/sync persisted state.
+
+    Boot order matters: directories first, then legacy ``<repo>/runs`` migration and
+    the direction-aware rule-52 ledger sync (see :mod:`cosmos_hub.persist`) — all
+    volume-safe and idempotent, all before any agent subprocess spawns.
+    """
+    from . import persist  # local import: persist needs Settings
+
+    for path in (settings.replays_dir, settings.logs_dir, settings.hold_file.parent,
+                 settings.runs_root):
         path.mkdir(parents=True, exist_ok=True)
+    persist.migrate_legacy_runs(settings)
+    persist.sync_ledger(settings)

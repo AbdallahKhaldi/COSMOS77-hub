@@ -6,6 +6,14 @@ the ChallengeGate budget (90 s cooldown, 10/day), applies the SAME SSRF rails as
 --json ...`` (argv list only, cwd = cop repo, 60 s timeout).  Success returns the
 doctor JSON verbatim plus ``elapsed_ms``; garbage output is a 502 error envelope;
 a missing subcommand is 503; a timeout is 504.
+
+TOCTOU boundary (accepted residual risk): ``check_url`` resolves the hostname ONCE
+at validation time, while the spawned doctor/agent subprocess re-resolves at dial
+time — a DNS-rebinding host (TTL-0 public→private flip) can therefore slip past the
+private/loopback refusal.  The blast radius is bounded by the https-only rule (our
+internal services speak plain HTTP, so their TLS handshakes fail), the shared rate
+budget, and the 60 s cap; pinning the validated IP would break SNI/vhost opponents,
+so the check is documented as best-effort rather than re-resolved downstream.
 """
 
 from __future__ import annotations

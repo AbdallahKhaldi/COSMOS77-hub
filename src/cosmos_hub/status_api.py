@@ -16,13 +16,15 @@ _BOOTED = time.time()
 
 
 def _ledger(settings: Settings) -> dict[str, Any] | None:
-    """Rule-52 counted ledger from the cop repo, if present (read-only)."""
-    path = settings.cop_repo / "artifacts" / "league_ledger.json"
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        return doc if isinstance(doc, dict) else None
-    except (OSError, json.JSONDecodeError):
-        return None
+    """Rule-52 counted ledger (read-only): repo copy first, volume twin as fallback."""
+    for path in (settings.repo_ledger_file, settings.ledger_file):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(doc, dict):
+            return doc
+    return None
 
 
 @router.get("/api/status")
@@ -53,20 +55,25 @@ async def api_status(request: Request) -> dict[str, Any]:
 
 @router.get("/api/runs")
 async def api_runs(request: Request) -> dict[str, Any]:
-    """Known runs (from the cop repo's runs/) with settlement and replay flags."""
+    """Known runs (from the data volume's runs/ trees) with settlement and replay flags."""
     settings: Settings = request.app.state.settings
-    runs: list[dict[str, Any]] = []
-    base = settings.cop_repo / "runs"
-    if base.is_dir():
-        for entry in sorted(base.iterdir(), reverse=True):
+    index: dict[str, dict[str, Any]] = {}
+    for base in (settings.runs_root / "shared", settings.runs_root / "cop",
+                 settings.runs_root / "thief"):
+        if not base.is_dir():
+            continue
+        for entry in base.iterdir():
             if not entry.is_dir():
                 continue
-            settled = any(entry.glob("result_*.json"))
-            runs.append({
-                "run_id": entry.name,
-                "settled": settled,
-                "windows_logged": len(list(entry.glob("log_*_g*.json"))),
+            row = index.setdefault(entry.name, {
+                "run_id": entry.name, "settled": False, "windows_logged": 0,
                 "replay": (settings.replays_dir / f"{entry.name}.json").is_file(),
-                "mtime": entry.stat().st_mtime,
+                "mtime": 0.0, "_logs": set(),
             })
+            row["settled"] = row["settled"] or any(entry.glob("result_*.json"))
+            row["_logs"].update(p.name for p in entry.glob("log_*_g*.json"))
+            row["mtime"] = max(row["mtime"], entry.stat().st_mtime)
+    runs = sorted(index.values(), key=lambda r: r["run_id"], reverse=True)
+    for row in runs:
+        row["windows_logged"] = len(row.pop("_logs"))
     return {"runs": runs[:100]}

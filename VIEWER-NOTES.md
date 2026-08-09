@@ -46,8 +46,13 @@ static/vendor/three-0.185.0/   three.js r185 min pair + LICENSE + addons (OrbitC
 static/vendor/kenney/          Kenney CC0 kits (Car Kit 3.1 + City Kit Commercial 2.1, see LICENSE-*.txt): police/thief,
                                buildings a-g, skyscrapers a-e, low-detail a-f, 5 parked cars, props/cone
 static/fonts/                  Anton, Chakra Petch 400/600, Space Mono 400/700, Inter (variable) woff2 + fonts.css + OFL-NOTICE.txt
-static/fixtures/demo-live.json    115 contract envelopes, one 20-move window, BOTH perspectives (see schema below)
-static/fixtures/demo-replay.json  contract replay doc: 2 windows, 42 frames, 71% ghost hit-rate, 1 TAMPERED step in window 2
+static/fixtures/demo-live.json    146 HUB-DIALECT envelopes from the REAL settled selfplay run
+                                  selfplay-20260809-012233 (35-move window, both perspectives, one
+                                  hub seq space). REGENERATE with scripts/make_demo_fixture.py —
+                                  never hand-edit; one dialect exists end to end (see below)
+static/fixtures/demo-replay.json  replay doc built from the same real run: 1 window, 36 frames,
+                                  belief_trace keyed by step (window key optional — the viewer
+                                  falls back to a step-only match)
 ```
 
 ## The city district (V2 world model)
@@ -184,57 +189,103 @@ sway/idle creep, makes tweens and camera transitions instant.
   timeline → director → HUD path as production; the perspective switcher works
   (the fixture carries both perspectives in one hub seq space and the fake
   socket filters, exactly like the server).
+- **The fixture speaks the hub dialect and comes from a real run.** Rebuild it
+  with `python3 scripts/make_demo_fixture.py [run-stamp]` (default
+  `selfplay-20260809-012233`): the converter reads BOTH agent repos'
+  `runs/<stamp>/` artifacts and composes the tape exactly like the hub's
+  tailer — views from each `events.jsonl` (`_VIEW_FIELDS` subset, game order:
+  step ascending, thief first, YOUR TURN before LOCKED), one `window_end` per
+  `log_*_gNN.json` addressed to `summary.my_role`, one `series_end` per
+  perspective from the result artifact, plus a `run_started` status and a
+  composed on-connect snapshot per perspective at the head. One seq space,
+  seq 1..N.
+- **Perspective switches resume the shared tape** (never rewind — only START
+  does) and the catch-up re-deliveries are marked `catchup:true` on copies, so
+  the HUD applies their state silently: no WINDOW SEALED / SERIES COMPLETE
+  slam or strip re-announcements replay for moments the viewer already lived
+  through.
 - `/replay/anything?demo=1` (and `/replay/<id>` when the fetch 404s → shows a
-  hint) loads `static/fixtures/demo-replay.json`. Window 2 frame index 30
-  (step 9) flips the badge to TAMPERED (verified live). The scent overlay
-  defaults OFF in replay (toggle stays); ▶ ENDING (next to the verdict panel)
-  seeks to 3 frames before the window end and plays at 1×.
+  hint) loads `static/fixtures/demo-replay.json` — the same real settled run
+  as the live tape (1 window, 36 frames, every step Verified OK). The scent
+  overlay defaults OFF in replay (toggle stays); ▶ ENDING (next to the verdict
+  panel) seeks to 3 frames before the window end and plays at 1×.
 - `?debug=1` on either page prints the draw-call ledger to the console every
   ~2 s and mirrors the last line to the canvas' `data-arena-debug` attribute.
+- **Regression pins:** `node scripts/verify_viewer.mjs` (exit 0 = all hold)
+  replays the shipped reducer/pairing/parse bytes against the fixture, real
+  hub payload shapes, catch-up suppression, and the /api/runs envelope — run
+  it after touching timeline.js, replay.js, menu.js, hud.js, net.js,
+  director.js or the fixtures.
 
-## Envelope contract consumed (hub-composed)
+## Envelope contract consumed (hub-composed — THE HUB DIALECT)
 
 ```json
 {"seq": 1, "ts": 0.0, "run_id": "…", "perspective": "police|thief",
  "type": "view|window_end|series_end|status|snapshot", "payload": {}}
 ```
+The payload shapes below are **exactly what `src/cosmos_hub/envelopes.py`
+emits** (pinned by the hub's tests); the reducer consumes them natively and
+additionally tolerates the pre-V3 fixture keys (`us/them/winner/verdict/
+scores/windows_total`) so old tapes still play.
 - `seq` monotonic per RUN across both perspectives ⇒ a one-perspective socket
   legitimately sees **gaps**; the client dedupes with a monotonic filter and
   never waits for gaps. A changed `run_id` resets the client log.
-- `view` payload = the events.jsonl line verbatim (contract): `t, role,
-  sub_game, step, banner("YOUR TURN"|"LOCKED"), self_pos[r,c], barriers[[r,c]…],
+- `view` payload = the events.jsonl line's `_VIEW_FIELDS`: `role, sub_game,
+  step, banner("YOUR TURN"|"LOCKED"), self_pos[r,c], barriers[[r,c]…],
   barriers_left, posterior{"r,c":p}, perceived_scent{"r,c":v}, confidence
   ("exact|fuzzy|none"), hints[str…]` — plus OPTIONAL `commit` (40-hex) which,
-  when present, feeds the commit-hash ticker. If Track A/B never adds it the
-  ticker shows "no sealed moves yet" (graceful).
-- `snapshot` payload: either a bare view, or `{view, scores{us,them}, window,
-  windows_total, pips?}` — both accepted.
-- `window_end` payload (assumed, composed by hub from log_*_gNN.json):
-  `{window, result("capture|survival|tie"), us, them, winner?, settled}` —
-  `us/them` are from the SOCKET's perspective. Reducer is defensive: also
-  accepts `{scores:{us,them}}` or `sub_game` for the window number.
-- `series_end` payload: `{verdict, us, them, settled, replay?}`.
-- `status` payload: `{line, agents{cop,thief}, run_active}` — `line` lands in
-  the radio ticker; used in attract mode.
+  when present, feeds the commit-hash ticker (graceful when absent).
+- `window_end` payload: `{sub_game, result("capture|survival|…"), my_role,
+  steps, reason, settled, score:{gid:pts}, winner_group:gid|null,
+  roles:{gid:role}}`. The reducer maps the gid-keyed score to per-feed
+  `us/them` via `my_role`+`roles` (us = the side this feed's agent played)
+  and derives the pip winner from `winner_group` (null ⇒ tie); it also learns
+  `usGid` here for the series mapping.
+- `series_end` payload: `{game_id, num_sub_games, final_result,
+  mutual_agreement}` — `final_result.total_score{gid:pts}` is mapped through
+  the learned `usGid`; the HUD verdict line derives from
+  `final_result.winner_group` / `series_tie` + `mutual_agreement.confirmed`.
+  NOTE `num_sub_games` is the DECLARED series length (6 even for a 1-window
+  run) — never used for the pip count.
+- `status` payload: `{state:"running"|"standing", run_id?, kind?, opponent?,
+  windows?}` — `windows` sets the real pip count (f1 runs show 1 pip, not 6).
+  A legacy `{line}` payload still lands in the radio ticker.
+- `snapshot` payload: `{run_id, perspective, view?, windows?:[window_end
+  payloads…], final?:series_end payload, status?}` — settled windows are
+  folded through the same window_end logic, so a mid-series reconnect
+  rebuilds pips/scores/usGid; `status.windows` restores the pip count.
+  (A bare view, or the legacy `{view, scores, window, windows_total, pips?}`,
+  is still accepted.)
 - On WS open the client sends `{"type":"hello","last_seq":N}` and expects one
   snapshot + the tail; it also sends `{"type":"ping"}` every 25 s (server may
   ignore).
 
 ## Replay document consumed (`GET /api/replays/{run_id}`)
 
-Contract shape, plus the meta keys the cinema uses:
+The hub's real document (replay.py `build`) plus the optional fixture-era
+meta keys the cinema still honors when present:
 ```json
-{"meta": {"run_id","gid_a","gid_b","role","kind","windows",
-          "score":{"us","them"},
-          "per_window":[{"window","result","us","them"}],
-          "verdict","settled"},
+{"meta": {"run_id","game_id","game_uid","windows","final_result",
+          "gid_a?","gid_b?","score?":{"us","them"},
+          "per_window?":[{"window","result","us","them"}],"verdict?"},
  "frames":[{"step","window","cop":[r,c],"thief":[r,c],"barriers":[[r,c]…],
             "commit_ok":true,"scent":{"r,c":v},"hint":"…|null"}],
  "verify":{"per_step":[true,…],"verdict":"Verified OK|TAMPERED"},
- "belief_trace":[{"step","ghost":[r,c]|null,"confidence"}]}
+ "belief_trace":[{"window","step","ghost":[r,c]|null,"confidence"}]}
 ```
-Alignment assumption: `verify.per_step[i]` and `belief_trace[i]` align with
-`frames[i]` (same length). Hit-rate = share of frames where `ghost == thief`.
+- Group ids and totals come from `meta.final_result.total_score` (gid-keyed)
+  when the fixture keys are absent; the endcard and score-table totals row
+  render from it, the verdict word from `winner_group`/`series_tie`.
+- **`belief_trace` pairs with frames BY (window, step), never by array
+  index** — the builder emits one entry per police events line, and a raw
+  tape holds YOUR TURN + LOCKED lines per step, so lengths need not match.
+  The viewer indexes the trace by `"window,step"` (later entries overwrite
+  earlier ones ⇒ the LOCKED post-turn view wins, same rule as the builder's
+  scent index) and looks up each frame's own key, falling back to a
+  step-only key for traces without a window field. Hit-rate = share of
+  frames whose step-paired `ghost == thief`.
+- `verify.per_step[i]` stays index-aligned with `frames[i]` (both are built
+  from the same per-step records walk).
 
 ## Other endpoints consumed (defensive readers)
 
@@ -248,9 +299,12 @@ Alignment assumption: `verify.per_step[i]` and `belief_trace[i]` align with
   `{detail|error}` are surfaced verbatim in the drawer.
 - `POST /api/pair` body `{opponent_gid, their_cop_url, their_thief_url,
   windows}` → response JSON rendered as the packet (docs page).
-- `GET /api/runs` (league fallback) → `[{run_id, opponent_gid, kind,
-  score:{us,them}|us/them, verdict, settled}]`. V2: a run is folded into the
-  collapsed "pre-arena runs (no replay)" details when `has_replay|replay|
+- `GET /api/runs` → the ENVELOPE `{"runs":[{run_id, settled, windows_logged,
+  replay, mtime}]}` (status_api.py; a bare array is also accepted). The menu's
+  REPLAYS list unwraps the envelope, keeps settled rows, builds meta from
+  `windows_logged`+`mtime`, and upgrades to `opponent_gid/kind/score/verdict`
+  if a future server adds them. V2: a run is folded into the collapsed
+  "pre-arena runs (no replay)" details when `has_replay|replay|
   replay_available === false` OR its us/them/verdict are all absent (the
   legacy all-dash rows); the headline table shows replayable runs only.
 - Admin (all under HMAC cookie, `credentials:same-origin`):
@@ -282,8 +336,10 @@ Recommended: `GZipMiddleware(minimum_size=1024)` — the min pair is ~751 KB raw
   resolved frames; both honor the same speed-multiplied-accumulator rule.
 - Inter downloaded as one variable woff2 (Google served identical bytes for
   400 and 600) — declared `font-weight: 100 900` in fonts.css.
-- Fixture `view` payloads carry the optional `commit` field (documented above)
-  so the commit ticker demos; contract events.jsonl does not yet include it.
+- Fixture `view` payloads no longer invent a `commit` field: the tape is
+  regenerated verbatim from a real run's events.jsonl, which does not carry
+  one. The seal ticker stays wired (documented above) and degrades gracefully
+  until the agents emit commits into the event stream.
 - `THREE.Clock` is deprecated in r185 — director/replay use `THREE.Timer`
   (`update()/getDelta()/getElapsed()`), same delta-accumulator semantics.
 - V2 spec deltas (tuned against live screenshots): day fog density 0.004 vs

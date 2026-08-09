@@ -1,9 +1,9 @@
-"""Tail both repos' run artifacts into viewer envelopes (contract: Event pipeline).
+"""Tail run artifacts into viewer envelopes (contract: Event pipeline).
 
-Each side of a run writes ``runs/<stamp>/`` inside its OWN repo: ``events.jsonl``
-(one line per on_view callback), ``log_*_gNN.json`` when a window settles and
-``result_*.json`` when the series ends.  The tailer polls both directories, composes
-seq-stamped envelopes and never rewrites an artifact (read-only bytes).
+Runs write under ``data_dir/runs`` (one shared dir vs a real opponent, per-role dirs
+for selfplay): ``events.jsonl`` per on_view line, ``log_*_gNN.json`` per settled
+window, ``result_*.json`` at series end.  The tailer polls every candidate dir,
+composes seq-stamped envelopes and never rewrites an artifact (read-only bytes).
 """
 
 from __future__ import annotations
@@ -12,19 +12,17 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .broadcast import PERSPECTIVES, Broadcaster
-from .config import ROLES, Settings
+from .broadcast import PERSPECTIVES
 from .envelopes import EnvelopeLog, series_end_payload, view_payload, window_end_payload
 
 log = logging.getLogger(__name__)
 
 
 class _Side:
-    """Cursor state for one repo's run directory."""
+    """Cursor state for one run directory."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -102,48 +100,3 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return doc if isinstance(doc, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
-
-
-class LiveHub:
-    """Glue: manager notifications -> tailer lifecycle -> broadcaster envelopes."""
-
-    def __init__(self, settings: Settings, broadcaster: Broadcaster | None = None) -> None:
-        """Start in standing posture with an empty envelope log."""
-        self.settings = settings
-        self.broadcaster = broadcaster or Broadcaster()
-        self.log = EnvelopeLog(self.broadcaster, "standing")
-        self.on_settled: Callable[[str], None] | None = None
-        self._stop: asyncio.Event | None = None
-        self._task: asyncio.Task[None] | None = None
-
-    def notify(self, event: str, payload: dict[str, Any]) -> None:
-        """Manager callback (loop thread): drive envelopes and the tailer."""
-        if event == "run_started":
-            self.begin_run(str(payload["run_id"]))
-            self.log.emit_both("status", {"state": "running", **payload})
-            return
-        if event in ("run_ended", "run_stopped"):
-            self.log.emit_both("status", {"state": "standing", **payload})
-            self.request_stop()
-            if self.on_settled is not None:
-                with contextlib.suppress(Exception):
-                    self.on_settled(str(payload.get("run_id", "")))
-            return
-        self.log.emit_both("status", payload)
-
-    def begin_run(self, run_id: str) -> None:
-        """Fresh envelope log (seq restarts) and a tailer over both repos' run dirs."""
-        self.request_stop()
-        self.log = EnvelopeLog(self.broadcaster, run_id)
-        dirs = [self.settings.runs_dir(role, run_id) for role in ROLES]
-        tailer = RunTailer(dirs, self.log)
-        try:
-            self._stop = asyncio.Event()
-            self._task = asyncio.get_running_loop().create_task(tailer.run(self._stop))
-        except RuntimeError:  # no loop (unit tests) — envelopes still flow, no tailer
-            self._stop, self._task = None, None
-
-    def request_stop(self) -> None:
-        """Ask the current tailer to drain and finish."""
-        if self._stop is not None:
-            self._stop.set()

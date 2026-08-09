@@ -71,17 +71,47 @@ export function createDirector({ arena, timeline, hud, rig }) {
         if (prevPos && (prevPos[0] !== pos[0] || prevPos[1] !== pos[1])) {
           const from = cellToWorld(prevPos[0], prevPos[1], 0);
           rig.trail.push(from.x, from.z);
-          const heading = Math.atan2(to.x - from.x, to.z - from.z);
           const g = rig.vehicle.group;
           arena.cameras.kick(); // V3: CHASE FOV kick as our car starts a move
-          addTween(from, to, dur, (b, a, k) => {
-            tmpA.copy(a); tmpB.copy(b);
-            g.position.lerpVectors(tmpA, tmpB, k);
-            let d = heading - g.rotation.y; // shortest-arc turn, no 360 spins
-            while (d > Math.PI) d -= 2 * Math.PI;
-            while (d < -Math.PI) d += 2 * Math.PI;
-            g.rotation.y += d * Math.min(1, k * 2);
-          }, () => { g.position.copy(to); g.rotation.y = heading; }); // SNAP
+          // ROADS ONLY: a legal engine step is one orthogonal cell, which is a
+          // straight road segment. Any longer/diagonal delta (catch-up bursts,
+          // foreign data) is routed as an L along the streets via a corner
+          // intersection — a car must never cut through a city block. Prefer the
+          // corner that is not barricaded.
+          const pts = [from];
+          if (prevPos[0] !== pos[0] && prevPos[1] !== pos[1]) {
+            const barr = Array.isArray(p.barriers) ? p.barriers : [];
+            const blocked = (r, c) => barr.some((b) => b[0] === r && b[1] === c);
+            const corner = blocked(prevPos[0], pos[1])
+              ? cellToWorld(pos[0], prevPos[1], 0)
+              : cellToWorld(prevPos[0], pos[1], 0);
+            pts.push(corner);
+          }
+          pts.push(to);
+          const legs = [];
+          let total = 0;
+          for (let i = 1; i < pts.length; i += 1) {
+            const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z) || 1e-6;
+            legs.push({ a: pts[i - 1], b: pts[i], len,
+              heading: Math.atan2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z) });
+            total += len;
+          }
+          const lastHeading = legs[legs.length - 1].heading;
+          addTween(from, to, dur, (_b, _a, k) => {
+            let d = k * total;
+            let leg = legs[0];
+            for (let i = 0; i < legs.length; i += 1) {
+              if (d <= legs[i].len || i === legs.length - 1) { leg = legs[i]; break; }
+              d -= legs[i].len;
+            }
+            const t = Math.min(1, d / leg.len);
+            tmpA.set(leg.a.x, leg.a.y, leg.a.z); tmpB.set(leg.b.x, leg.b.y, leg.b.z);
+            g.position.lerpVectors(tmpA, tmpB, t);
+            let turn = leg.heading - g.rotation.y; // shortest-arc turn, no 360 spins
+            while (turn > Math.PI) turn -= 2 * Math.PI;
+            while (turn < -Math.PI) turn += 2 * Math.PI;
+            g.rotation.y += turn * Math.min(1, 0.35);
+          }, () => { g.position.copy(to); g.rotation.y = lastHeading; }); // SNAP
         } else {
           rig.vehicle.group.position.copy(to); // first placement / STAY
         }
@@ -132,7 +162,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
       (env.type === "snapshot" && !!(env.payload && env.payload.view));
     if (gameful && mode !== "live") setMode("live");
     applyToRig(prev, state, env, moveDuration());
-    hud.render(state, { backlog: backlog(), mode, env });
+    hud.render(state, { backlog: backlog(), mode, env, catchup: env.catchup === true });
     if (env.type === "window_end") {
       arena.cameras.reframe(); // ARENA V2: auto-reframe TOP on window change
     }

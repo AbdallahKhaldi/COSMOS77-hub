@@ -3,7 +3,14 @@
 No web request can reach this: it is a console script that refuses non-TTY stdin,
 prints the exact armed commands, and executes them only after the operator types
 ``ARM COUNTED``.  While it runs, a hold-file keeps the hub manager off the agent
-ports; reporting stays a separate deliberate step and is printed, never auto-sent.
+ports; because the manager also stands its relay down, THIS CLI spawns the
+window-parity relay itself (odd/even matched to the gid-sort split), so the public
+single URL ``/mcp`` keeps working for the opponent — or hand them the per-role URLs
+printed below, matched to the same parity.  The series is ONE role-alternating
+6-sub-game game: both agents share one absolute ``--out`` on the data volume, split
+the windows by parity (``--windows-spec``) and exactly one closes.  Reporting stays
+a separate deliberate step: ONE report against the single shared result, printed,
+never auto-sent.
 """
 
 from __future__ import annotations
@@ -16,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from . import argvs, config
+from . import argvs, config, persist
 from .runspec import GID_RE, RunSpec
 
 CONFIRMATION = "ARM COUNTED"
@@ -71,10 +78,18 @@ def main(argv: list[str] | None = None) -> int:
         their_single_url=args.their_single_url, windows=args.windows,
         out_stamp=args.stamp or f"counted-{time.strftime('%Y%m%d-%H%M%S')}",
     )
-    commands = {role: argvs.counted_argv(role, spec, settings) for role in config.ROLES}
+    roles = argvs.active_roles(spec, settings)
+    commands = {role: argvs.counted_argv(role, spec, settings) for role in roles}
+    split = argvs.parity_windows(spec, settings)
+    shared_out = settings.shared_runs_dir(spec.out_stamp)
     print("== COUNTED RUN — the following ARMED commands will be executed ==")
     for role, command in commands.items():
         print(f"  (cwd {settings.repo(role)})\n  $ {shlex.join(command)}")
+    print(f"Topology (gid sort {sorted([settings.standing_gids, spec.opponent_gid])}): "
+          f"our cop plays windows [{split['cop'] or '-'}], our thief [{split['thief'] or '-'}]; "
+          f"the {argvs.closer_role(spec, settings)} closes; shared out {shared_out}")
+    print("Opponent URLs: single /mcp (parity relay, spawned below) or per-role "
+          "/cop/mcp + /thief/mcp matched to the windows above.")
     print("Prerequisite: config counted=true in both repos (double arming, rules 37-38).")
     try:
         typed = input(f'Type "{CONFIRMATION}" to proceed: ')
@@ -86,18 +101,23 @@ def main(argv: list[str] | None = None) -> int:
     hold = settings.hold_file
     hold.parent.mkdir(parents=True, exist_ok=True)
     hold.write_text(f"counted {spec.out_stamp} {time.time()}\n", encoding="utf-8")
+    shared_out.mkdir(parents=True, exist_ok=True)
     procs: list[subprocess.Popen[bytes]] = []
+    relay: subprocess.Popen[bytes] | None = None
     try:
-        ports = list(argvs.PORTS.values())
+        ports = [*argvs.PORTS.values(), config.RELAY_PORT]
         print(f"waiting for the hub to release ports {ports} (hold file set) ...")
         if not _wait_ports_free(ports, _PORT_WAIT_S):
             print("REFUSED: agent ports still busy — is the hub honoring the hold file?",
                   file=sys.stderr)
             return 4
+        relay = subprocess.Popen(argvs.relay_argv(spec, settings),
+                                 cwd=str(settings.repo(config.RELAY)),
+                                 env=argvs.spawn_env())
         procs = [
             subprocess.Popen(commands[role], cwd=str(settings.repo(role)),
                              env=argvs.spawn_env())
-            for role in config.ROLES
+            for role in roles
         ]
         rcs = [proc.wait() for proc in procs]
     except KeyboardInterrupt:
@@ -107,14 +127,17 @@ def main(argv: list[str] | None = None) -> int:
                 proc.terminate()
         rcs = [130]
     finally:
+        if relay is not None:
+            with contextlib.suppress(Exception):
+                relay.terminate()
         with contextlib.suppress(OSError):
             hold.unlink()
-    print("== series finished; when settled, send BOTH reports (still your call) ==")
-    for role in config.ROLES:
-        console = "cosmos-cop" if role == "cop" else "cosmos-thief"
-        print(f"  (cwd {settings.repo(role)})\n"
-              f"  $ uv run {console} report runs/{spec.out_stamp}/result_<gid>.json"
-              " --counted --send")
+        with contextlib.suppress(Exception):  # runtime ledger advances reach the volume
+            persist.sync_ledger(settings)
+    print("== series finished; when settled, send ONE report (still your call) ==")
+    print(f"  (cwd {settings.cop_repo})\n"
+          f"  $ uv run cosmos-cop report {shared_out}/result_<gid>.json"
+          " --counted --send")
     return max(rcs)
 
 

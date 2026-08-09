@@ -36,6 +36,16 @@ def test_admin_disabled_when_no_password_configured(tmp_path, fake_procs):
         assert response.status_code == 503
 
 
+def test_login_cookie_secure_on_https_deploys_only(client, tmp_path, fake_procs):
+    response = client.post("/api/admin/login", json={"password": "hub-pw"})
+    header = response.headers["set-cookie"].lower()
+    assert "secure" in header and "httponly" in header  # settings.public_url is https
+    plain = make_settings(tmp_path, public_url="http://127.0.0.1:8080")
+    with TestClient(create_app(plain)) as http_client:
+        response = http_client.post("/api/admin/login", json={"password": "hub-pw"})
+        assert "secure" not in response.headers["set-cookie"].lower()  # local http dev
+
+
 def test_login_sets_cookie_and_unlocks(client, fake_procs):
     assert client.post("/api/admin/login", json={"password": "hub-pw"}).status_code == 200
     assert admin.COOKIE in client.cookies

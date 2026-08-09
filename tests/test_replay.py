@@ -55,6 +55,45 @@ def test_build_verified_ok_with_belief_trace(settings):
     assert document["frames"][0]["scent"] == {"3,4": 0.9}
 
 
+def test_belief_trace_aligns_one_entry_per_frame_by_step(settings):
+    """The agent writes ~2 events lines per step (YOUR TURN + LOCKED): dedupe by step."""
+    run_id = "f2-20260809-141414"
+    cop_dir = settings.runs_dir("cop", run_id)
+    write_json(cop_dir / "log_cosmos77-vs-rival_g01.json", make_log(sub_game=1, steps=3))
+    write_json(cop_dir / "result_cosmos77-vs-rival.json", make_result())
+    events = [  # two lines for step 1 (last wins), two for step 2, none for step 3
+        {"t": "view", "role": "police", "sub_game": 1, "step": 1, "banner": "YOUR TURN",
+         "posterior": {"0,0": 0.9}, "confidence": "fuzzy"},
+        {"t": "view", "role": "police", "sub_game": 1, "step": 1, "banner": "LOCKED",
+         "posterior": {"5,5": 0.8}, "confidence": "exact"},
+        {"t": "view", "role": "police", "sub_game": 1, "step": 2, "banner": "YOUR TURN",
+         "posterior": {"1,2": 0.7}, "confidence": "fuzzy"},
+        {"t": "view", "role": "police", "sub_game": 1, "step": 2, "banner": "LOCKED",
+         "posterior": {"2,2": 0.6}, "confidence": "fuzzy"},
+        {"t": "view", "role": "thief", "sub_game": 1, "step": 3, "posterior": {"6,6": 1.0}},
+    ]
+    (cop_dir / "events.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
+    document = replay.build(settings, run_id)
+    frames, trace = document["frames"], document["belief_trace"]
+    assert len(trace) == len(frames) == 3  # EXACTLY one belief entry per frame
+    for frame, entry in zip(frames, trace, strict=True):
+        assert (entry["window"], entry["step"]) == (frame["window"], frame["step"])
+    assert trace[0]["ghost"] == [5, 5] and trace[0]["confidence"] == "exact"  # LAST line
+    assert trace[1]["ghost"] == [2, 2]
+    assert trace[2]["ghost"] is None  # no police line for step 3 (thief lines ignored)
+
+
+def test_build_reads_the_shared_run_dir(settings):
+    run_id = "f2-20260809-151515"
+    shared = settings.shared_runs_dir(run_id)
+    write_json(shared / "log_cosmos77-vs-rival_g01.json", make_log())
+    write_json(shared / "result_cosmos77-vs-rival.json", make_result())
+    document = replay.build(settings, run_id)
+    assert document["verify"]["verdict"] == "Verified OK"
+    assert document["meta"]["windows"] == 1
+
+
 def test_build_flags_tampered_records(settings):
     run_id = _settled_run(settings, run_id="f2-20260809-111111", tamper=True)
     document = replay.build(settings, run_id)

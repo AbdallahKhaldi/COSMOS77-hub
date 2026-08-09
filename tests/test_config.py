@@ -65,4 +65,18 @@ def test_ensure_dirs_idempotent(settings):
     config.ensure_dirs(settings)
     config.ensure_dirs(settings)
     assert settings.replays_dir.is_dir() and settings.logs_dir.is_dir()
-    assert settings.hold_file.parent.is_dir()
+    assert settings.hold_file.parent.is_dir() and settings.runs_root.is_dir()
+
+
+def test_run_dirs_live_on_the_data_volume(settings):
+    assert settings.runs_dir("cop", "x") == settings.data_dir / "runs" / "cop" / "x"
+    assert settings.shared_runs_dir("x") == settings.data_dir / "runs" / "shared" / "x"
+    assert settings.run_dirs("x") == [settings.shared_runs_dir("x"),
+                                      settings.runs_dir("cop", "x"),
+                                      settings.runs_dir("thief", "x")]
+    assert settings.ledger_file == settings.data_dir / "league_ledger.json"
+
+
+def test_volume_backed_flag_follows_hub_data_dir_env(tmp_path):
+    assert config.load({}).volume_backed is False
+    assert config.load({"HUB_DATA_DIR": str(tmp_path / "vol")}).volume_backed is True

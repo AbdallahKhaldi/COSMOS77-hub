@@ -27,7 +27,7 @@ from . import (
     ws,
 )
 from .broadcast import Broadcaster
-from .events import LiveHub
+from .livehub import LiveHub
 from .manager import Manager
 
 _TICK_S = 1.0

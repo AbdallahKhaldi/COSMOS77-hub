@@ -86,13 +86,13 @@ function applyPreset(p) {
 }
 
 let ghostLine = null, truthLine = null;
-function rebuildLines(frames_, trace_, lo, hi) {
+function rebuildLines(frames_, lo, hi) {
   for (const l of [ghostLine, truthLine]) {
     if (l) { arena.scene.remove(l); l.geometry.dispose(); l.material.dispose(); }
   }
   const gPts = [], tPts = [];
   for (let i = lo; i <= hi; i += 1) {
-    const g = trace_[i] && trace_[i].ghost;
+    const g = traceGhost(frames_[i]);
     if (Array.isArray(g)) gPts.push(cellToWorld(g[0], g[1], 2.2));
     const t = frames_[i] && frames_[i].thief;
     if (Array.isArray(t)) tPts.push(cellToWorld(t[0], t[1], 1.4));
@@ -114,14 +114,45 @@ function rebuildLines(frames_, trace_, lo, hi) {
 /* ---------------------------------------------------------------- document */
 let doc = null;
 let frames = [];
-let trace = [];
 let perStep = [];
+let traceMap = new Map();       // "window,step" (and "*,step") -> {ghost, confidence}
+let metaInfo = { gidA: "us", gidB: "them", totals: null, fin: {} };
 let winLo = 0, winHi = 0;      // active frame range (window selector)
 let k = 0;                      // current frame index
 let playing = false;
 let speed = 1;
 let acc = 0;
 const timer = new THREE.Timer(); // r185: Clock is deprecated
+
+/* Belief trace pairs with frames BY STEP, never by array index: the builder
+   (hub replay.py) emits belief entries keyed {window, step} from the police
+   events tape, and step counts need not match frame indexes (a raw tape holds
+   YOUR TURN + LOCKED lines per step). Later entries for the same (window,step)
+   overwrite earlier ones, so the LOCKED post-turn view wins — same rule as the
+   builder's scent index. Fixture traces without a window key fall back to a
+   step-only key. */
+function indexTrace(rows) {
+  const m = new Map();
+  for (const t of rows || []) {
+    if (!t || t.step == null || !isFinite(Number(t.step))) continue;
+    const entry = { ghost: Array.isArray(t.ghost) ? t.ghost : null, confidence: t.confidence };
+    const step = Number(t.step);
+    if (t.window != null && isFinite(Number(t.window))) m.set(Number(t.window) + "," + step, entry);
+    else m.set("*," + step, entry);
+  }
+  return m;
+}
+
+function traceEntry(f) {
+  if (!f) return null;
+  return traceMap.get(Number(f.window) + "," + Number(f.step)) ||
+    traceMap.get("*," + Number(f.step)) || null;
+}
+
+function traceGhost(f) {
+  const t = traceEntry(f);
+  return t && Array.isArray(t.ghost) ? t.ghost : null;
+}
 
 function windowsOf() {
   const seen = [];
@@ -135,7 +166,7 @@ function setWindow(w) {
   winHi = idx.length ? idx[idx.length - 1] : frames.length - 1;
   $("scrub").min = String(winLo);
   $("scrub").max = String(winHi);
-  rebuildLines(frames, trace, winLo, winHi);
+  rebuildLines(frames, winLo, winHi);
   seek(winLo);
   arena.cameras.reframe(); // V2: auto-reframe TOP on window change
   document.querySelectorAll("#windowSeg button").forEach((b) => {
@@ -146,7 +177,7 @@ function setWindow(w) {
 function hitRateUpTo(i) {
   let hits = 0, n = 0;
   for (let j = winLo; j <= i; j += 1) {
-    const g = trace[j] && trace[j].ghost;
+    const g = traceGhost(frames[j]); // step-paired, never index-paired
     const t = frames[j] && frames[j].thief;
     if (Array.isArray(g) && Array.isArray(t)) {
       n += 1;
@@ -185,7 +216,7 @@ function paintFrame(i, lerpFrom = null, lerpK = 1) {
   barriers.sync(f.barriers || []);
   scent.setTargets(gridFromMap(f.scent));
 
-  const g = trace[i] && trace[i].ghost;
+  const g = traceGhost(f); // this frame's OWN step, wherever it sits in the array
   if (Array.isArray(g)) {
     const gp = cellToWorld(g[0], g[1], 0);
     ghostGroup.visible = $("tglGhost").getAttribute("aria-pressed") === "true";
@@ -223,11 +254,20 @@ function showEndcard() {
   const meta = doc.meta || {};
   const verdict = (doc.verify && doc.verify.verdict) || "Verified OK";
   const s = meta.score || {};
-  const word = meta.verdict || (verdict === "Verified OK" ? "SERIES SEALED" : "TAMPERED");
+  // real hub docs carry gid-keyed final_result.total_score, no us/them meta
+  const scoreTxt = (s.us != null || s.them != null)
+    ? `${s.us ?? "?"} – ${s.them ?? "?"}`
+    : (metaInfo.totals
+      ? `${metaInfo.gidA} ${metaInfo.totals[metaInfo.gidA] ?? "?"} – ${metaInfo.gidB} ${metaInfo.totals[metaInfo.gidB] ?? "?"}`
+      : "? – ?");
+  const word = meta.verdict ||
+    (metaInfo.fin.winner_group ? `${String(metaInfo.fin.winner_group).toUpperCase()} WINS` :
+      metaInfo.fin.series_tie ? "SERIES TIED" :
+        (verdict === "Verified OK" ? "SERIES SEALED" : "TAMPERED"));
   const el = $("slamWord");
   el.textContent = word;
   el.className = "word " + (String(word).includes("ESCAP") ? "escaped" : String(word).includes("BUST") ? "" : "series");
-  $("slamDetail").textContent = `${s.us ?? "?"} – ${s.them ?? "?"} · ${verdict}`;
+  $("slamDetail").textContent = `${scoreTxt} · ${verdict}`;
   $("slam").classList.add("show");
   setTimeout(() => $("slam").classList.remove("show"), 3200);
 }
@@ -331,23 +371,37 @@ function frame() {
 }
 
 /* ------------------------------------------------------------------ boot */
-fetch(DOC_URL, { headers: { Accept: "application/json" } })
+fetch(DOC_URL, { headers: { Accept: "application/json" }, cache: "no-store" })
   .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
   .then((d) => {
     doc = d;
     frames = Array.isArray(d.frames) ? d.frames : [];
-    trace = Array.isArray(d.belief_trace) ? d.belief_trace : [];
+    traceMap = indexTrace(Array.isArray(d.belief_trace) ? d.belief_trace : []);
     perStep = (d.verify && Array.isArray(d.verify.per_step)) ? d.verify.per_step : [];
     const meta = d.meta || {};
+    // real hub docs: meta = {run_id, game_id, game_uid, windows, final_result};
+    // gids come from the gid-keyed totals (fixture meta gid_a/gid_b wins)
+    metaInfo.fin = meta.final_result && typeof meta.final_result === "object" ? meta.final_result : {};
+    metaInfo.totals = metaInfo.fin.total_score && typeof metaInfo.fin.total_score === "object"
+      ? metaInfo.fin.total_score : null;
+    const gids = metaInfo.totals ? Object.keys(metaInfo.totals) : [];
+    metaInfo.gidA = meta.gid_a || gids[0] || "us";
+    metaInfo.gidB = meta.gid_b || gids[1] || "them";
     $("metaPill").textContent =
       (demo || !runId ? "demo fixture · " : "") +
-      `${meta.gid_a || "us"} vs ${meta.gid_b || "them"} · ${frames.length} frames`;
+      `${metaInfo.gidA} vs ${metaInfo.gidB} · ${frames.length} frames`;
     $("verdictLine").textContent = "series verdict: " + ((d.verify && d.verify.verdict) || "?");
     const tbody = $("scoreTable").querySelector("tbody");
     tbody.innerHTML = "";
-    for (const w of meta.per_window || []) {
+    const rows = (meta.per_window || []).map((w) => (
+      [String(w.window), String(w.result || "—"), String(w.us ?? "—"), String(w.them ?? "—")]
+    ));
+    if (!rows.length && metaInfo.totals) { // hub docs: one totals row (gid-keyed)
+      rows.push(["Σ", metaInfo.fin.winner_group ? `winner ${metaInfo.fin.winner_group}` : "series",
+        String(metaInfo.totals[metaInfo.gidA] ?? "—"), String(metaInfo.totals[metaInfo.gidB] ?? "—")]);
+    }
+    for (const cols of rows) {
       const tr = document.createElement("tr");
-      const cols = [String(w.window), String(w.result || "—"), String(w.us ?? "—"), String(w.them ?? "—")];
       cols.forEach((txt, ci) => {
         const td = document.createElement("td");
         td.textContent = txt;

@@ -66,3 +66,22 @@ def test_snapshot_reflects_prior_events(client):
     assert snapshot["payload"]["view"]["step"] == 3
     assert snapshot["payload"]["windows"][0]["sub_game"] == 1
     assert snapshot["seq"] >= 2
+
+
+def test_snapshot_after_run_end_carries_no_dead_run_view(client):
+    hub = client.app.state.hub
+    hub.notify("run_started", {"run_id": "f1-20260809-120000", "kind": "f1"})
+    hub.log.emit("view", "police", {"step": 7, "self_pos": [3, 4]})
+    hub.log.emit("window_end", "police", {"sub_game": 1, "result": "capture"})
+    hub.notify("run_ended", {"run_id": "f1-20260809-120000", "kind": "f1"})
+    for perspective in ("police", "thief"):
+        envelope = hub.log.snapshot_envelope(perspective)
+        assert envelope["run_id"] == "standing"
+        payload = envelope["payload"]
+        assert "view" not in payload and "windows" not in payload and "final" not in payload
+        assert payload["status"]["state"] == "standing"
+    # a NEW connection gets exactly that view-free standing snapshot
+    with client.websocket_connect("/ws/live?perspective=police") as ws:
+        first = ws.receive_json()
+    assert first["type"] == "snapshot" and "view" not in first["payload"]
+    assert first["run_id"] == "standing"

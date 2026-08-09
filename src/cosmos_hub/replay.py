@@ -2,7 +2,9 @@
 
 Only settled series get a replay — an unsettled run is refused with 409.  Source
 artifacts are read-only bytes; the replay JSON is the hub's own derived document.
-Belief trace (ghost-vs-truth) comes from OUR police events.jsonl, never from the wire.
+Belief trace (ghost-vs-truth) comes from OUR police events.jsonl, never from the
+wire, and carries EXACTLY one entry per frame — ``belief_trace[i]`` belongs to
+``frames[i]`` and both carry matching ``window``/``step`` fields.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse
 
-from .config import ROLES, Settings
+from .belief import belief_trace, events_indexes
+from .config import Settings
 from .frames import all_records_ok, window_frames
 from .runspec import RUN_ID_RE
 
@@ -33,35 +36,9 @@ def _load(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def _events_indexes(run_dir: Path) -> tuple[dict[tuple[int, int], Any], list[dict[str, Any]]]:
-    """Scent-by-(window,step) plus the belief trace, from the police events.jsonl."""
-    scent: dict[tuple[int, int], Any] = {}
-    belief: list[dict[str, Any]] = []
-    path = run_dir / "events.jsonl"
-    if not path.is_file():
-        return scent, belief
-    for raw in path.read_bytes().splitlines():
-        try:
-            line = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(line, dict) or line.get("role") != "police":
-            continue
-        window, step = int(line.get("sub_game") or 0), int(line.get("step") or 0)
-        scent[(window, step)] = line.get("perceived_scent")
-        posterior = line.get("posterior") or {}
-        ghost = None
-        if posterior:
-            best = max(posterior, key=lambda k: posterior[k])
-            ghost = [int(p) for p in str(best).split(",")[:2]]
-        belief.append({"window": window, "step": step, "ghost": ghost,
-                       "confidence": line.get("confidence")})
-    return scent, belief
-
-
 def build(settings: Settings, run_id: str) -> dict[str, Any]:
     """Compose the replay document for *run_id*; raises :class:`NotSettledError` early."""
-    dirs = [settings.runs_dir(role, run_id) for role in ROLES]
+    dirs = settings.run_dirs(run_id)
     primary = next((d for d in dirs if d.is_dir()), None)
     if primary is None:
         raise FileNotFoundError(run_id)
@@ -73,7 +50,7 @@ def build(settings: Settings, run_id: str) -> dict[str, Any]:
     for directory in dirs:
         for path in sorted(directory.glob("log_*_g*.json")):
             logs.setdefault(path.name, path)
-    scent_index, belief = _events_indexes(dirs[0])
+    scent_index, belief_index = events_indexes(dirs)
     frames: list[dict[str, Any]] = []
     per_step: list[bool] = []
     sealed_ok = True
@@ -97,7 +74,7 @@ def build(settings: Settings, run_id: str) -> dict[str, Any]:
                  "final_result": result.get("final_result"), "built_ts": time.time()},
         "frames": frames,
         "verify": {"per_step": per_step, "verdict": verdict},
-        "belief_trace": belief,
+        "belief_trace": belief_trace(frames, belief_index),
     }
 
 

@@ -74,8 +74,9 @@ def fake_procs(monkeypatch):
 
 @pytest.fixture
 def client(fake_procs, settings):
+    # https base: the admin cookie is Secure on https deployments (settings.public_url)
     app = create_app(settings)
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client
 
 

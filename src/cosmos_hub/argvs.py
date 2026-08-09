@@ -6,13 +6,22 @@ game loop.  A configured run swaps in `<console> serve ...` per the contract, an
 counted variant (SSH CLI only) appends the second arming switch.  The window-parity
 sparring relay (cop repo script) and the pairing doctor are argv-listed here too —
 user input NEVER reaches a shell string.
+
+Series topology (playbook §1, FIXED): roles alternate each sub-game and the
+alphabetically-first gid plays COP on the odd ones.  Against a REAL opponent our two
+fixed-role processes therefore split the windows by parity (``--windows-spec``),
+write ONE shared absolute ``--out`` on the data volume, and exactly one of them —
+the owner of the last window — closes the series (``--no-close`` on the other).
+Selfplay keeps per-role dirs and ``--alternate-labels`` (both processes play all
+windows in-house); it is the only kind that does.
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-from .config import COP_PORT, RELAY_PORT, THIEF_PORT, Settings
+from .config import COP_PORT, RELAY_PORT, ROLES, THIEF_PORT, Settings
 from .runspec import RunSpec
 
 PORTS = {"cop": COP_PORT, "thief": THIEF_PORT}
@@ -35,19 +44,45 @@ def standing_argv(role: str) -> list[str]:
     ]
 
 
-def relay_argv() -> list[str]:
-    """Window-parity relay behind public ``/mcp`` (runs in the cop repo, port 8803)."""
-    return [
-        "uv", "run", "python", "scripts/sparring_relay.py",
-        "--port", str(RELAY_PORT),
-        "--odd-url", f"http://127.0.0.1:{COP_PORT}/mcp",
-        "--even-url", f"http://127.0.0.1:{THIEF_PORT}/mcp",
-    ]
+def parity_windows(spec: RunSpec, settings: Settings) -> dict[str, str]:
+    """Window lists per role from the gid sort (ASCII: uppercase gids sort first).
+
+    ``sorted([our_gid, opponent_gid])[0]`` plays COP on the odd sub-games, so our cop
+    owns the odds only when our gid sorts first; our thief always owns the complement.
+    """
+    ours_first = sorted([settings.standing_gids, spec.opponent_gid])[0] == settings.standing_gids
+    odds = ",".join(str(w) for w in range(1, spec.windows + 1, 2))
+    evens = ",".join(str(w) for w in range(2, spec.windows + 1, 2))
+    return {"cop": odds if ours_first else evens, "thief": evens if ours_first else odds}
+
+
+def closer_role(spec: RunSpec, settings: Settings) -> str:
+    """The role owning the LAST window closes the shared artifact set (writes the result)."""
+    split = parity_windows(spec, settings)
+    return "cop" if str(spec.windows) in split["cop"].split(",") else "thief"
+
+
+def active_roles(spec: RunSpec, settings: Settings) -> tuple[str, ...]:
+    """Roles that actually play *spec* (an f1 vs a real opponent involves ONE of ours)."""
+    if spec.kind == "selfplay":
+        return ROLES
+    split = parity_windows(spec, settings)
+    return tuple(role for role in ROLES if split[role])
+
+
+def run_out_dirs(spec: RunSpec, settings: Settings) -> list[Path]:
+    """Artifact dirs to pre-create: per-role for selfplay, ONE shared vs a real opponent."""
+    if spec.kind == "selfplay":
+        return [settings.runs_dir(role, spec.out_stamp) for role in ROLES]
+    return [settings.shared_runs_dir(spec.out_stamp)]
 
 
 def run_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
     """Configured-series command for *role* (never counted — see :mod:`runspec`)."""
-    gid_b = "cosmos77-mirror" if spec.kind == "selfplay" else spec.opponent_gid
+    external = spec.kind != "selfplay"
+    gid_b = spec.opponent_gid if external else "cosmos77-mirror"
+    out = (settings.shared_runs_dir(spec.out_stamp) if external
+           else settings.runs_dir(role, spec.out_stamp))
     argv = [
         "uv", "run", _CONSOLES[role], "serve",
         "--port", str(PORTS[role]),
@@ -55,19 +90,46 @@ def run_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
         "--gid-a", settings.standing_gids,
         "--gid-b", gid_b,
         "--windows", str(spec.windows),
-        "--out", f"runs/{spec.out_stamp}",
+        "--out", str(out),
         "--events",
     ]
     if spec.scent_model:
         argv += ["--scent-model", spec.scent_model]
-    if spec.kind == "selfplay":
+    if not external:
         argv.append("--alternate-labels")
+        return argv
+    split = parity_windows(spec, settings)[role]
+    if not split:
+        raise ValueError(f"our {role} owns no window of {spec.out_stamp} (use active_roles)")
+    argv += ["--windows-spec", split]
+    if role != closer_role(spec, settings):
+        argv.append("--no-close")
     return argv
 
 
 def counted_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
     """Armed command printed/executed ONLY by the SSH ``cosmos-hub-counted`` CLI."""
     return [*run_argv(role, spec, settings), "--counted"]
+
+
+def relay_argv(spec: RunSpec | None = None, settings: Settings | None = None) -> list[str]:
+    """Window-parity relay behind public ``/mcp`` (runs in the cop repo, port 8803).
+
+    For a real-opponent run the odd/even upstreams follow the SAME gid-sort parity as
+    the agents' ``--windows-spec``; standing/selfplay keeps the documented default
+    (odd → cop).
+    """
+    odd_role = "cop"
+    if spec is not None and settings is not None and spec.kind != "selfplay":
+        split = parity_windows(spec, settings)
+        odd_role = "cop" if "1" in split["cop"].split(",") else "thief"
+    even_role = "thief" if odd_role == "cop" else "cop"
+    return [
+        "uv", "run", "python", "scripts/sparring_relay.py",
+        "--port", str(RELAY_PORT),
+        "--odd-url", f"http://127.0.0.1:{PORTS[odd_role]}/mcp",
+        "--even-url", f"http://127.0.0.1:{PORTS[even_role]}/mcp",
+    ]
 
 
 def report_dry_run_argv(result_path: str) -> list[str]:

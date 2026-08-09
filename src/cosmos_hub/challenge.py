@@ -40,7 +40,7 @@ def default_resolver(host: str) -> list[str]:
 
 
 def check_url(url: str, resolver: Resolver = default_resolver) -> None:
-    """Reject anything but a resolvable, public, https URL of sane length."""
+    """Reject non-public/https URLs (TOCTOU boundary documented in :mod:`cosmos_hub.doctor`)."""
     if len(url) > URL_MAX:
         raise HTTPException(422, f"URL longer than {URL_MAX} characters")
     parts = urlsplit(url)

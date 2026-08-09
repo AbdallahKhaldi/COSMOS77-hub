@@ -8,7 +8,7 @@
    with commit-hash seals. The ESC menu lives in menu.js. Local truth only —
    the heatmap renders OUR posterior, never an opponent position. */
 
-import { GRID, gridFromMap } from "./timeline.js";
+import { GRID, gridFromMap, windowEndInfo, seriesVerdict } from "./timeline.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -242,17 +242,23 @@ export function createHud({ perspective, onPerspective, onMode }) {
     if (!env) return;
     if (env.type === "window_end") {
       const p = env.payload || {};
+      const info = windowEndInfo(p, state.pips.length); // hub OR fixture dialect
       const res = String(p.result || "").toLowerCase();
-      if (res.includes("capture")) slam("BUSTED", "", `window ${p.window ?? state.pips.length} sealed`);
-      else if (res.includes("surviv")) slam("ESCAPED", "escaped", `window ${p.window ?? state.pips.length} sealed`);
-      else slam("WINDOW SEALED", "series", `window ${p.window ?? state.pips.length}`);
-      sysLine(`// window ${p.window ?? "?"} settled — ${p.us ?? "?"}–${p.them ?? "?"}`);
+      if (res.includes("capture")) slam("BUSTED", "", `window ${info.window} sealed`);
+      else if (res.includes("surviv")) slam("ESCAPED", "escaped", `window ${info.window} sealed`);
+      else slam("WINDOW SEALED", "series", `window ${info.window}`);
+      sysLine(`// window ${info.window} settled — ${info.us}–${info.them}`);
     } else if (env.type === "series_end") {
       const p = env.payload || {};
-      slam("SERIES COMPLETE", "series", `${state.scores.us} – ${state.scores.them} · ${p.verdict || "settled"}`);
+      slam("SERIES COMPLETE", "series", `${state.scores.us} – ${state.scores.them} · ${seriesVerdict(p)}`);
       sysLine("// series settled — replay unlocked");
     } else if (env.type === "status" && env.payload && env.payload.line) {
       sysLine("// " + env.payload.line);
+    } else if (env.type === "status" && env.payload && env.payload.state) {
+      // hub-dialect operational status: {state:"running"|"standing", run_id?…}
+      sysLine("// " + (env.payload.state === "running"
+        ? `run ${env.payload.run_id || ""} live — local truth streaming`
+        : "agents standing by"));
     }
   }
 
@@ -272,7 +278,15 @@ export function createHud({ perspective, onPerspective, onMode }) {
       renderScores(state);
       renderStars(state);
       renderChip();
-      if (meta && meta.env) renderEventFlourish(state, meta.env);
+      // Flourishes (slam banner + strip pushes) fire only for FRESH events.
+      // Catch-up deliveries (demo-tape resume after a perspective switch) are
+      // marked catchup:true by the fake socket — replaying a WINDOW SEALED /
+      // SERIES COMPLETE slam for events the viewer already lived through would
+      // be a re-announcement of old news. Deep live backlogs (tab restore)
+      // are also compressed silently; <=3 matches the director's normal tier.
+      if (meta && meta.env && !meta.catchup && !(meta.backlog > 3)) {
+        renderEventFlourish(state, meta.env);
+      }
     },
     setMode,
     /* live socket vs demo fixture — flips the chip labels */

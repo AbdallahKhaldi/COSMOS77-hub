@@ -68,8 +68,11 @@ async def login(request: Request) -> JSONResponse:
     if not hmac.compare_digest(supplied, settings.admin_password):
         raise HTTPException(401, "wrong password")
     response = JSONResponse({"ok": True})
+    # Secure on an https deployment (RAILWAY_PUBLIC_DOMAIN ⇒ https public_url), so the
+    # session token never rides plain http to the edge; local http dev keeps working.
     response.set_cookie(COOKIE, make_token(), max_age=SESSION_TTL_S, httponly=True,
-                        samesite="lax", path="/")
+                        samesite="lax", path="/",
+                        secure=settings.public_url.startswith("https://"))
     return response
 
 
@@ -122,10 +125,10 @@ async def admin_report_dry_run(request: Request) -> dict[str, Any]:
     if not RUN_ID_RE.match(run_id):
         raise HTTPException(422, "run_id required")
     settings: Settings = request.app.state.settings
-    results = sorted(settings.runs_dir("cop", run_id).glob("result_*.json"))
+    results = sorted(p for d in settings.run_dirs(run_id) for p in d.glob("result_*.json"))
     if not results:
         raise HTTPException(404, "no settled result for that run")
-    argv = report_dry_run_argv(str(results[0].relative_to(settings.cop_repo)))
+    argv = report_dry_run_argv(str(results[0]))  # absolute: runs live on the data volume
     proc = await asyncio.to_thread(
         subprocess.run, argv, cwd=str(settings.cop_repo),
         capture_output=True, text=True, timeout=120, check=False,
