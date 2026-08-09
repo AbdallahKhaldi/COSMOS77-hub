@@ -324,12 +324,18 @@ function startTape() {
 
 function switchPerspective(p) {
   if (socket) socket.close();       // never two perspectives at once
+  // hold the moment: the other agent's truth must resume at the SAME game step,
+  // never from its spawn cell (the switch-resets-to-start bug)
+  const held = director.state && director.state.view;
+  const moment = held && typeof held.step === "number"
+    ? { sub_game: held.sub_game, step: held.step } : null;
   demoResume = true;                // same tape moment, other agent's truth
   perspective = p;
   const wasLive = director.mode === "live";
   rig.vehicle = vehicleFor(p);      // CHASE lands behind the newly selected car
   hud.setPerspectiveChrome(p);
   director.reset(p, wasLive ? "live" : "attract"); // clears the shared timeline too
+  if (wasLive && moment) director.fastForwardTo(moment);
   const q = new URLSearchParams(location.search);
   q.set("perspective", p);
   history.replaceState(null, "", "?" + q.toString());

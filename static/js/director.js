@@ -34,10 +34,13 @@ export function createDirector({ arena, timeline, hud, rig }) {
   let running = false;
   let paceMs = 0;               // >0: min gap between VIEW applications (fast demo runs)
   let lastViewAt = -1e9;
+  let ffTarget = null;          // {sub_game, step}: after a perspective switch, apply
+                                // instantly up to the moment the viewer was watching
 
   function backlog() { return timeline.events.length - cursor; }
 
   function moveDuration() {
+    if (ffTarget) return 0;     // fast-forward re-applies silently — no tweens
     const b = backlog();
     if (REDUCED) return 0.001;
     if (b <= 3) return MOVE_MS / 1000;
@@ -202,6 +205,20 @@ export function createDirector({ arena, timeline, hud, rig }) {
     let guard = 0;
     while (backlog() > 0 && guard < INSTANT_CAP) {
       const pending = timeline.events[cursor];
+      if (ffTarget && pending) {
+        const p = pending.payload || {};
+        const sg = typeof p.sub_game === "number" ? p.sub_game : 1;
+        const st = typeof p.step === "number" ? p.step : 0;
+        const gameEvent = pending.type === "view" || pending.type === "window_end";
+        const past = gameEvent &&
+          (sg > ffTarget.sub_game || (sg === ffTarget.sub_game && st > ffTarget.step));
+        if (past) {
+          ffTarget = null;                    // caught up — resume the paced beat
+          lastViewAt = timer.getElapsed() * 1000;
+        } else {
+          applyNext(); guard += 1; continue;  // silent instant re-apply
+        }
+      }
       if (paceMs > 0 && pending && pending.type === "view") {
         const nowMs = timer.getElapsed() * 1000;
         if (nowMs - lastViewAt < paceMs) break; // wait for the beat — never spin
@@ -212,6 +229,9 @@ export function createDirector({ arena, timeline, hud, rig }) {
       if (tweens.length === 0) { applyNext(); guard += 1; continue; }
       break;
     }
+    // the other feed ended before the held moment (shorter stream): stop
+    // fast-forwarding so the next live turn animates normally
+    if (ffTarget && backlog() === 0) { ffTarget = null; lastViewAt = -1e9; }
 
     // (b..d)
     stepTweens(dt);
@@ -238,6 +258,11 @@ export function createDirector({ arena, timeline, hud, rig }) {
     },
     setSpeed(x) { speed = x; },
     setPace(ms) { paceMs = ms || 0; lastViewAt = -1e9; },
+    fastForwardTo(t) {
+      ffTarget = t && typeof t.step === "number"
+        ? { sub_game: typeof t.sub_game === "number" ? t.sub_game : 1, step: t.step }
+        : null;
+    },
     setAttract() { setMode("attract"); },
     get state() { return state; },
     get mode() { return mode; },
@@ -248,6 +273,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
       timeline.reset(perspective);
       cursor = 0;
       tweens = [];
+      ffTarget = null;
       state = initialState(perspective);
       rig.barriers.reset();
       rig.ghost.setPosterior(new Float64Array(49), "none");
