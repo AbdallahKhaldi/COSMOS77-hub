@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 
 @pytest.fixture()
-def app_client(client):  # noqa: ANN001 - project conftest fixture
+def app_client(client: Any) -> Any:
     """Reuse the project's TestClient fixture under a clearer name."""
     return client
 
