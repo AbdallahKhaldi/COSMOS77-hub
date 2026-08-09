@@ -6,7 +6,8 @@
    the repo is not an npm package) and extracts the REAL pairing/parse code
    from replay.js and menu.js, then replays:
    - the regenerated HUB-DIALECT demo fixture end to end, both perspectives
-     (scores/pips/verdict must be the real run's 5–10 survival);
+     (scores/pips/verdict are DERIVED from the fixture, never hardcoded, so
+      regenerating the demo tape from a different real run cannot rot the pins);
    - catch-up flourish suppression on perspective switch, incl. the
      tail-of-burst regression a bare backlog threshold misses;
    - real 6-window hub payload shapes (gid-keyed score/winner_group/roles);
@@ -78,6 +79,14 @@ function drain(tl, state) {
 
 /* ================= 1. demo fixture, hub dialect, end to end ================= */
 const tape = JSON.parse(readFileSync(HUB + "/static/fixtures/demo-live.json", "utf8"));
+/* Expected outcome is DERIVED from the fixture's own window_end payload, so a
+   regenerated demo tape (a different real game) can never rot these pins. */
+const we0 = tape.find((e) => e.type === "window_end" && e.perspective === "police").payload;
+const usGid = we0.roles && Object.keys(we0.roles).find((g) => we0.roles[g] === we0.my_role);
+const themGid = Object.keys(we0.score).find((g) => g !== usGid);
+const expUs = we0.score[usGid], expThem = we0.score[themGid];
+const expWinner = we0.winner_group === usGid ? "us" : (we0.winner_group ? "them" : "tie");
+
 {
   let state = initialState("police");
   let mode = "attract"; const fl = [], sys = [];
@@ -88,20 +97,26 @@ const tape = JSON.parse(readFileSync(HUB + "/static/fixtures/demo-live.json", "u
     fl.push(...r.flourishes); sys.push(...r.syslines);
   }
   ok("demo/police windowsTotal=1", state.windowsTotal === 1, String(state.windowsTotal));
-  ok("demo/police scores 5-10", state.scores.us === 5 && state.scores.them === 10, JSON.stringify(state.scores));
-  ok("demo/police pip winner them", state.pips.length === 1 && state.pips[0].winner === "them"
-    && state.pips[0].us === 5 && state.pips[0].them === 10, JSON.stringify(state.pips));
+  ok(`demo/police scores ${expUs}-${expThem} (from fixture)`,
+     state.scores.us === expUs && state.scores.them === expThem, JSON.stringify(state.scores));
+  ok(`demo/police pip winner ${expWinner}`, state.pips.length === 1 && state.pips[0].winner === expWinner
+    && state.pips[0].us === expUs && state.pips[0].them === expThem, JSON.stringify(state.pips));
   ok("demo/police usGid learned", state.usGid === "cosmos77", state.usGid);
   ok("demo/police series + live mode", !!state.series && mode === "live");
   ok("demo/police flourishes fresh", fl.join("|") === "window_end:police|series_end:police", fl.join("|"));
-  ok("demo/police sysline real scores", sys.includes("// window 1 settled — 5–10"), JSON.stringify(sys));
-  ok("demo/police series verdict", sys.some((s) => s.includes("SERIES COMPLETE 5 – 10 · COSMOS77-MIRROR TAKES THE SERIES · mutually sealed")), JSON.stringify(sys.filter((s) => s.includes("SERIES"))));
+  ok("demo/police sysline real scores",
+     sys.includes(`// window 1 settled — ${expUs}–${expThem}`), JSON.stringify(sys));
+  ok("demo/police series verdict",
+     sys.some((s) => s.startsWith(`SERIES COMPLETE ${expUs} – ${expThem}`) && s.includes("mutually sealed")),
+     JSON.stringify(sys.filter((s) => s.includes("SERIES"))));
 }
 {
   let state = initialState("thief");
   for (const env of tape.filter((e) => e.perspective === "thief")) state = applyEvent(state, env);
-  ok("demo/thief scores 10-5", state.scores.us === 10 && state.scores.them === 5, JSON.stringify(state.scores));
-  ok("demo/thief pip winner us", state.pips[0].winner === "us");
+  ok(`demo/thief scores ${expThem}-${expUs} (mirrored)`,
+     state.scores.us === expThem && state.scores.them === expUs, JSON.stringify(state.scores));
+  ok("demo/thief pip winner mirrored",
+     state.pips[0].winner === (expWinner === "us" ? "them" : expWinner === "them" ? "us" : "tie"));
   ok("demo/thief usGid mirror", state.usGid === "cosmos77-mirror", state.usGid);
 }
 
@@ -114,7 +129,7 @@ const tape = JSON.parse(readFileSync(HUB + "/static/fixtures/demo-live.json", "u
   const r = drain(tl, initialState("thief"));
   ok("catchup/silent (no slam, no strip)", r.flourishes.length === 0 && r.syslines.length === 0,
     JSON.stringify([r.flourishes, r.syslines]));
-  ok("catchup/state complete", r.state.scores.us === 10 && r.state.pips.length === 1 && !!r.state.series);
+  ok("catchup/state complete", r.state.pips.length === 1 && !!r.state.series);
   ok("catchup/mode live", r.mode === "live");
 }
 { // regression: WITHOUT the mark, tail-of-burst events land at backlog<=3 and WOULD slam

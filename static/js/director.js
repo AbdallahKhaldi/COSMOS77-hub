@@ -13,9 +13,9 @@ import * as THREE from "three";
 import { cellToWorld } from "./scene.js";
 import { REDUCED } from "./entities.js";
 import { applyEvent, initialState, gridFromMap } from "./timeline.js";
+import { drainDecision, INSTANT_CAP } from "./pacing.js";
 
 const MOVE_MS = 450;
-const INSTANT_CAP = 20;
 
 function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2; }
 
@@ -36,11 +36,12 @@ export function createDirector({ arena, timeline, hud, rig }) {
   let lastViewAt = -1e9;
   let ffTarget = null;          // {sub_game, step}: after a perspective switch, apply
                                 // instantly up to the moment the viewer was watching
+  let instantApply = false;     // set by the drain decision for the current event
 
   function backlog() { return timeline.events.length - cursor; }
 
   function moveDuration() {
-    if (ffTarget) return 0;     // fast-forward re-applies silently — no tweens
+    if (instantApply) return 0; // catching up: re-apply silently, no tweens
     const b = backlog();
     if (REDUCED) return 0.001;
     if (b <= 3) return MOVE_MS / 1000;
@@ -204,30 +205,22 @@ export function createDirector({ arena, timeline, hud, rig }) {
     // tween tiers start the next event only when the previous tween is done.
     let guard = 0;
     while (backlog() > 0 && guard < INSTANT_CAP) {
-      const pending = timeline.events[cursor];
-      if (ffTarget && pending) {
-        const p = pending.payload || {};
-        const sg = typeof p.sub_game === "number" ? p.sub_game : 1;
-        const st = typeof p.step === "number" ? p.step : 0;
-        const gameEvent = pending.type === "view" || pending.type === "window_end";
-        const past = gameEvent &&
-          (sg > ffTarget.sub_game || (sg === ffTarget.sub_game && st > ffTarget.step));
-        if (past) {
-          ffTarget = null;                    // caught up — resume the paced beat
-          lastViewAt = timer.getElapsed() * 1000;
-        } else {
-          applyNext(); guard += 1; continue;  // silent instant re-apply
-        }
-      }
-      if (paceMs > 0 && pending && pending.type === "view") {
-        const nowMs = timer.getElapsed() * 1000;
-        if (nowMs - lastViewAt < paceMs) break; // wait for the beat — never spin
+      const nowMs = timer.getElapsed() * 1000;
+      const decision = drainDecision({
+        pending: timeline.events[cursor], fastForward: ffTarget, paceMs,
+        nowMs, lastViewAt, backlog: backlog(), tweens: tweens.length,
+      });
+      if (decision.do === "wait") break;
+      if (decision.do === "clearFastForward") {   // caught up to the held moment
+        ffTarget = null;
         lastViewAt = nowMs;
-        applyNext(); guard += 1; continue;
+        continue;
       }
-      if (backlog() > 12) { applyNext(); guard += 1; continue; }
-      if (tweens.length === 0) { applyNext(); guard += 1; continue; }
-      break;
+      instantApply = decision.instant;            // read by moveDuration()
+      if (decision.beat) lastViewAt = nowMs;
+      applyNext();
+      instantApply = false;
+      guard += 1;
     }
     // the other feed ended before the held moment (shorter stream): stop
     // fast-forwarding so the next live turn animates normally
