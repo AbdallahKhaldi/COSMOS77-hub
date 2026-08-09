@@ -76,7 +76,7 @@ def test_armed_run_executes_and_clears_hold(cli_env, monkeypatch, capsys):
     # ONE report command against the single shared result artifact
     assert out.count("--counted --send") == 1
     assert f"report {shared}/result_" in out
-    cop_argv = next(p for p in DummyProc.REGISTRY.values() if "cosmos-cop" in p.argv).argv
+    cop_argv = next(p for p in DummyProc.REGISTRY.values() if "cosmos-cop" in p.argv[0]).argv
     assert "--counted" in cop_argv and "serve" in cop_argv
     assert cop_argv[cop_argv.index("--peer-url") + 1] == "https://r.example/thief/mcp"
 
@@ -86,8 +86,8 @@ def test_armed_topology_parity_split_shared_out_single_closer(cli_env, monkeypat
     monkeypatch.setattr("builtins.input", lambda prompt="": "ARM COUNTED")
     assert counted_cli.main(ARGS) == 0
     spawned = list(DummyProc.REGISTRY.values())
-    cop = next(p.argv for p in spawned if "cosmos-cop" in p.argv and "serve" in p.argv)
-    thief = next(p.argv for p in spawned if "cosmos-thief" in p.argv and "serve" in p.argv)
+    cop = next(p.argv for p in spawned if "cosmos-cop" in p.argv[0] and "serve" in p.argv)
+    thief = next(p.argv for p in spawned if "cosmos-thief" in p.argv[0] and "serve" in p.argv)
     # complementary parity from the gid sort ("cosmos77" < "rival": cop odds)
     assert cop[cop.index("--windows-spec") + 1] == "1,3,5"
     assert thief[thief.index("--windows-spec") + 1] == "2,4,6"

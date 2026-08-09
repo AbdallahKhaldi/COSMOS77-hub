@@ -32,6 +32,8 @@ export function createDirector({ arena, timeline, hud, rig }) {
   let mode = "attract";             // attract | live
   let tweens = [];
   let running = false;
+  let paceMs = 0;               // >0: min gap between VIEW applications (fast demo runs)
+  let lastViewAt = -1e9;
 
   function backlog() { return timeline.events.length - cursor; }
 
@@ -151,6 +153,11 @@ export function createDirector({ arena, timeline, hud, rig }) {
 
   function applyNext() {
     const env = timeline.events[cursor];
+    if (paceMs > 0 && env && env.type === "view") {
+      const now = timer.getElapsed() * 1000;
+      if (now - lastViewAt < paceMs) return; // hold the tape — the game unfolds at watchable speed
+      lastViewAt = now;
+    }
     cursor += 1;
     const prev = state;
     state = applyEvent(state, env);
@@ -228,6 +235,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
       timeline.push(env);
     },
     setSpeed(x) { speed = x; },
+    setPace(ms) { paceMs = ms || 0; lastViewAt = -1e9; },
     setAttract() { setMode("attract"); },
     get state() { return state; },
     get mode() { return mode; },

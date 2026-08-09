@@ -290,6 +290,7 @@ function startDemo() {
       if (!res.joined) director.reset(perspective, "attract");
       source = "live";
       hud.setSource("live");
+      director.setPace(650); // a real selfplay finishes in seconds — unfold it watchably
       openSocket(); // the live feed streams the run (snapshot catches us up if joining)
       hud.sysLine(res.joined
         ? "// JOINED — a live pursuit is already in progress (" + res.run_id + ")"
@@ -297,6 +298,10 @@ function startDemo() {
     })
     .catch(function (e) {
       var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "lane busy";
+      if (director.mode === "live") {
+        hud.sysLine("// pursuit still playing — " + why + " before the next fresh game");
+        return; // never yank a live game off the screen for a tape
+      }
       if (hud.showSlam) hud.showSlam("RECORDED TAPE", "tape", "live lane cooling down — " + why);
       hud.sysLine("// ⚠ RECORDED TAPE (not live): " + why + " — press again shortly for a fresh game");
       startTape();
@@ -305,6 +310,7 @@ function startDemo() {
 
 function startTape() {
   if (socket) socket.close();
+  director.setPace(0); // the tape is already paced by the fixture clock
   demoDone = false;
   demoResume = false; // the button always rewinds the tape
   director.reset(perspective, "attract");

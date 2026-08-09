@@ -8,12 +8,14 @@ from cosmos_hub.argvs import relay_argv
 from cosmos_hub.manager import Manager
 from cosmos_hub.runspec import web_runspec
 
-EXPECTED_ARGV = [
-    "uv", "run", "python", "scripts/sparring_relay.py",
-    "--port", "8803",
-    "--odd-url", "http://127.0.0.1:8801/mcp",
-    "--even-url", "http://127.0.0.1:8802/mcp",
-]
+
+def expected_argv(settings):
+    return [
+        str(settings.repo("cop") / ".venv" / "bin" / "python"), "scripts/sparring_relay.py",
+        "--port", "8803",
+        "--odd-url", "http://127.0.0.1:8801/mcp",
+        "--even-url", "http://127.0.0.1:8802/mcp",
+    ]
 
 
 @pytest.fixture
@@ -21,14 +23,14 @@ def manager(settings, fake_procs):
     return Manager(settings)
 
 
-def test_relay_argv_matches_the_script_flags():
-    assert relay_argv() == EXPECTED_ARGV
+def test_relay_argv_matches_the_script_flags(settings):
+    assert relay_argv(settings) == expected_argv(settings)
 
 
 def test_standing_spawns_relay_in_cop_repo(manager, settings):
     manager.start_standing()
     relay = manager.procs["relay"]
-    assert relay.argv == EXPECTED_ARGV
+    assert relay.argv == expected_argv(settings)
     assert relay.cwd == str(settings.cop_repo)  # the script lives in the cop repo
 
 
@@ -38,7 +40,7 @@ def test_run_swap_respawns_relay_with_run_tag(manager, settings):
     run_id = manager.start_run(web_runspec({"kind": "selfplay"}))
     relay = manager.procs["relay"]
     assert relay.pid != standing_pid  # fresh window-parity state per run
-    assert relay.argv == EXPECTED_ARGV
+    assert relay.argv == expected_argv(settings)
     assert (settings.logs_dir / f"relay-{run_id}.log").exists()
 
 

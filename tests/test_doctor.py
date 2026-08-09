@@ -47,8 +47,9 @@ def test_success_returns_doctor_json_verbatim_plus_elapsed(doctor_client, monkey
     assert isinstance(body["elapsed_ms"], int) and body["elapsed_ms"] >= 0
     argv, kwargs = calls[0]
     assert isinstance(argv, list)  # argv list only — user input never becomes a shell string
-    assert argv[:6] == ["uv", "run", "cosmos-cop", "doctor", "--json", "--url"]
-    assert argv[6] == "https://rival.example/mcp"
+    assert argv[0].endswith("/.venv/bin/cosmos-cop")
+    assert argv[1:4] == ["doctor", "--json", "--url"]
+    assert argv[4] == "https://rival.example/mcp"
     assert kwargs["cwd"] == str(settings.cop_repo)
     assert kwargs["timeout"] == 60.0
     assert "shell" not in kwargs

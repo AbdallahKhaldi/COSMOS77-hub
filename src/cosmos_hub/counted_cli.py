@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             print("REFUSED: agent ports still busy — is the hub honoring the hold file?",
                   file=sys.stderr)
             return 4
-        relay = subprocess.Popen(argvs.relay_argv(spec, settings),
+        relay = subprocess.Popen(argvs.relay_argv(settings, spec),
                                  cwd=str(settings.repo(config.RELAY)),
                                  env=argvs.spawn_env())
         procs = [

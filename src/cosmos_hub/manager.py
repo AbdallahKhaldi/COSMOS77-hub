@@ -73,8 +73,9 @@ class Manager:
             if self.procs or self.hold_active():
                 return
             for role in ROLES:
-                self.procs[role] = self._spawn(role, argvs.standing_argv(role), "standing")
-            self.procs[RELAY] = self._spawn(RELAY, argvs.relay_argv(), "standing")
+                argv = argvs.standing_argv(role, self.settings)
+                self.procs[role] = self._spawn(role, argv, "standing")
+            self.procs[RELAY] = self._spawn(RELAY, argvs.relay_argv(self.settings), "standing")
             self.notify("status", {"state": "standing"})
 
     def start_run(self, spec: RunSpec, source: str = "web") -> str:
@@ -96,7 +97,7 @@ class Manager:
             for role in argvs.active_roles(spec, self.settings):
                 self.procs[role] = self._spawn(role, argvs.run_argv(role, spec, self.settings),
                                                spec.out_stamp, vary_seed=vary)
-            relay = argvs.relay_argv(spec, self.settings)
+            relay = argvs.relay_argv(self.settings, spec)
             self.procs[RELAY] = self._spawn(RELAY, relay, spec.out_stamp)
             self.active = spec
         self.notify("run_started", {"run_id": spec.out_stamp, "kind": spec.kind,
@@ -141,7 +142,7 @@ class Manager:
                     self.notify("run_ended", {"run_id": ended.out_stamp, "kind": ended.kind})
                     self.start_standing()
                 elif RELAY not in self.procs or self.procs[RELAY].poll() is not None:
-                    relay = argvs.relay_argv(self.active, self.settings)
+                    relay = argvs.relay_argv(self.settings, self.active)
                     self.procs[RELAY] = self._spawn(RELAY, relay, self.active.out_stamp)
                 return
             if not self.procs or any(p.poll() is not None for p in self.procs.values()):

@@ -87,7 +87,7 @@ async def post_doctor(request: Request) -> dict[str, Any] | JSONResponse:
     gate.admit()
     gate.note_started()  # a spawned doctor consumes budget even if it later fails
     settings: Settings = request.app.state.settings
-    argv = doctor_argv(url=url, cop_url=cop, thief_url=thief, gid=gid)
+    argv = doctor_argv(request.app.state.settings, url=url, cop_url=cop, thief_url=thief, gid=gid)
     started = time.monotonic()
     try:
         proc = await asyncio.to_thread(

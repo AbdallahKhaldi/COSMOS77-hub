@@ -128,7 +128,7 @@ async def admin_report_dry_run(request: Request) -> dict[str, Any]:
     results = sorted(p for d in settings.run_dirs(run_id) for p in d.glob("result_*.json"))
     if not results:
         raise HTTPException(404, "no settled result for that run")
-    argv = report_dry_run_argv(str(results[0]))  # absolute: runs live on the data volume
+    argv = report_dry_run_argv(str(results[0]), settings)  # absolute: runs on the data volume
     proc = await asyncio.to_thread(
         subprocess.run, argv, cwd=str(settings.cop_repo),
         capture_output=True, text=True, timeout=120, check=False,

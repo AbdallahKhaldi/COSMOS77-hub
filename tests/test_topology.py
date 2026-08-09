@@ -81,10 +81,10 @@ def test_selfplay_keeps_alternate_labels_and_no_split(tmp_path):
 
 def test_relay_parity_follows_the_gid_sort(tmp_path):
     settings = make_settings(tmp_path)
-    default = argvs.relay_argv()
+    default = argvs.relay_argv(settings)
     assert default[default.index("--odd-url") + 1].endswith(":8801/mcp")
-    ours_first = argvs.relay_argv(_spec("rival"), settings)
+    ours_first = argvs.relay_argv(settings, _spec("rival"))
     assert ours_first[ours_first.index("--odd-url") + 1].endswith(":8801/mcp")
-    ours_second = argvs.relay_argv(_spec("SMNGRP05"), settings)
+    ours_second = argvs.relay_argv(settings, _spec("SMNGRP05"))
     assert ours_second[ours_second.index("--odd-url") + 1].endswith(":8802/mcp")
     assert ours_second[ours_second.index("--even-url") + 1].endswith(":8801/mcp")

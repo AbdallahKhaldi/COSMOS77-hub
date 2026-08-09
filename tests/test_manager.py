@@ -39,7 +39,7 @@ def test_run_swaps_standing_for_configured_serve(manager, settings, notes):
     assert run_id == spec.out_stamp
     assert {p.pid for p in manager.procs.values()}.isdisjoint(standing_pids)
     cop = manager.procs["cop"].argv
-    assert cop[:4] == ["uv", "run", "cosmos-cop", "serve"]
+    assert cop[0].endswith("/COSMOS77-cop/.venv/bin/cosmos-cop") and cop[1] == "serve"
     assert cop[cop.index("--peer-url") + 1] == "https://r.example/thief/mcp"  # role swap
     assert cop[cop.index("--gid-b") + 1] == "rival"
     # ONE shared absolute out dir on the volume, identical for both agents

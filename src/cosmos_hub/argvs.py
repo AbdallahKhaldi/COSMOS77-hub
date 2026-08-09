@@ -29,6 +29,11 @@ _PACKAGES = {"cop": "cosmos77_cop", "thief": "cosmos77_thief"}
 _CONSOLES = {"cop": "cosmos-cop", "thief": "cosmos-thief"}
 
 
+def _venv_bin(settings: Settings, role: str, tool: str) -> str:
+    """Venv executable: the tracked process must BE the game, never a uv-run wrapper."""
+    return str(settings.repo(role) / ".venv" / "bin" / tool)
+
+
 def spawn_env(vary_seed: int | None = None, role: str = "") -> dict[str, str]:
     """Hub env minus VIRTUAL_ENV; a seed arms per-role tie-break variety (demos only)."""
     env = dict(os.environ)
@@ -38,10 +43,10 @@ def spawn_env(vary_seed: int | None = None, role: str = "") -> dict[str, str]:
     return env
 
 
-def standing_argv(role: str) -> list[str]:
+def standing_argv(role: str, settings: Settings) -> list[str]:
     """Await-mode command: MCP endpoint up (406 to bare GET), nothing playing."""
     return [
-        "uv", "run", "uvicorn", f"{_PACKAGES[role]}.net.asgi:app",
+        _venv_bin(settings, role, "uvicorn"), f"{_PACKAGES[role]}.net.asgi:app",
         "--host", "127.0.0.1", "--port", str(PORTS[role]),
     ]
 
@@ -82,7 +87,7 @@ def run_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
     out = (settings.shared_runs_dir(spec.out_stamp) if external
            else settings.runs_dir(role, spec.out_stamp))
     argv = [
-        "uv", "run", _CONSOLES[role], "serve",
+        _venv_bin(settings, role, _CONSOLES[role]), "serve",
         "--port", str(PORTS[role]),
         "--peer-url", spec.peer_url_for(role, PORTS),
         "--gid-a", settings.standing_gids,
@@ -110,35 +115,30 @@ def counted_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
     return [*run_argv(role, spec, settings), "--counted"]
 
 
-def relay_argv(spec: RunSpec | None = None, settings: Settings | None = None) -> list[str]:
-    """Window-parity relay behind public ``/mcp`` (runs in the cop repo, port 8803).
-
-    For a real-opponent run the odd/even upstreams follow the SAME gid-sort parity as
-    the agents' ``--windows-spec``; standing/selfplay keeps the documented default
-    (odd → cop).
-    """
+def relay_argv(settings: Settings, spec: RunSpec | None = None) -> list[str]:
+    """Parity relay for public ``/mcp``: opponent runs follow the gid-sort split."""
     odd_role = "cop"
-    if spec is not None and settings is not None and spec.kind != "selfplay":
+    if spec is not None and spec.kind != "selfplay":
         split = parity_windows(spec, settings)
         odd_role = "cop" if "1" in split["cop"].split(",") else "thief"
     even_role = "thief" if odd_role == "cop" else "cop"
     return [
-        "uv", "run", "python", "scripts/sparring_relay.py",
+        _venv_bin(settings, "cop", "python"), "scripts/sparring_relay.py",
         "--port", str(RELAY_PORT),
         "--odd-url", f"http://127.0.0.1:{PORTS[odd_role]}/mcp",
         "--even-url", f"http://127.0.0.1:{PORTS[even_role]}/mcp",
     ]
 
 
-def report_dry_run_argv(result_path: str) -> list[str]:
+def report_dry_run_argv(result_path: str, settings: Settings) -> list[str]:
     """Report preview: no ``--send``, no ``--counted`` — structurally friendly-only."""
-    return ["uv", "run", "cosmos-cop", "report", result_path]
+    return [_venv_bin(settings, "cop", "cosmos-cop"), "report", result_path]
 
 
-def doctor_argv(url: str | None = None, cop_url: str | None = None,
+def doctor_argv(settings: Settings, url: str | None = None, cop_url: str | None = None,
                 thief_url: str | None = None, gid: str | None = None) -> list[str]:
     """Pairing-doctor command (Track D CLI contract): JSON on stdout, argv list only."""
-    argv = ["uv", "run", "cosmos-cop", "doctor", "--json"]
+    argv = [_venv_bin(settings, "cop", "cosmos-cop"), "doctor", "--json"]
     if url is not None:
         argv += ["--url", url]
     else:

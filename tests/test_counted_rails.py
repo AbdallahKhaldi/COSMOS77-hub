@@ -68,7 +68,7 @@ def test_web_run_argvs_never_contain_counted(settings):
             assert "--counted" not in argvs.run_argv(role, spec, settings)
 
 
-def test_report_dry_run_argv_is_structurally_friendly():
-    argv = argvs.report_dry_run_argv("runs/x/result_y.json")
+def test_report_dry_run_argv_is_structurally_friendly(settings):
+    argv = argvs.report_dry_run_argv("runs/x/result_y.json", settings)
     assert "--send" not in argv
     assert "--counted" not in argv
