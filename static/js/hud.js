@@ -265,6 +265,8 @@ export function createHud({ perspective, onPerspective, onMode }) {
   function setMode(m) {
     mode = m;
     if (els.hero) els.hero.classList.toggle("hidden", m !== "attract");
+    const resume = document.getElementById("menuResume");
+    if (resume) resume.hidden = m === "attract"; // nothing to resume in attract
     renderChip();
     if (onMode) onMode(m);
   }

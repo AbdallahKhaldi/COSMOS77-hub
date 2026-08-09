@@ -17,7 +17,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from . import argvs
+from . import argvs, seeds
 from .config import RELAY, ROLES, Settings
 from .runspec import CountedRefusedError, RunRefusedError, RunSpec
 
@@ -35,13 +35,13 @@ class Manager:
         self.active: RunSpec | None = None
         self._logs, self._lock = [], threading.RLock()  # open log handles + state lock
 
-    def _spawn(self, name: str, argv: list[str], tag: str) -> subprocess.Popen[bytes]:
+    def _spawn(self, name: str, argv: list[str], tag: str, vary_seed: int | None = None,
+               ) -> subprocess.Popen[bytes]:
         """Start one subprocess, logging its output under the hub data dir."""
         self.settings.logs_dir.mkdir(parents=True, exist_ok=True)
-        out = open(self.settings.logs_dir / f"{name}-{tag}.log", "ab")  # noqa: SIM115
-        self._logs.append(out)
+        self._logs.append(out := open(self.settings.logs_dir / f"{name}-{tag}.log", "ab"))  # noqa: SIM115
         proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)),
-                                env=argvs.spawn_env(), stdout=out,
+                                env=argvs.spawn_env(vary_seed, name), stdout=out,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         log.info("spawned %s (%s) pid=%d", name, tag, proc.pid)
         return proc
@@ -92,10 +92,10 @@ class Manager:
             self._kill_all()
             for out in argvs.run_out_dirs(spec, self.settings):
                 out.mkdir(parents=True, exist_ok=True)
+            vary = seeds.run_seed(spec)
             for role in argvs.active_roles(spec, self.settings):
-                self.procs[role] = self._spawn(
-                    role, argvs.run_argv(role, spec, self.settings), spec.out_stamp
-                )
+                self.procs[role] = self._spawn(role, argvs.run_argv(role, spec, self.settings),
+                                               spec.out_stamp, vary_seed=vary)
             relay = argvs.relay_argv(spec, self.settings)
             self.procs[RELAY] = self._spawn(RELAY, relay, spec.out_stamp)
             self.active = spec

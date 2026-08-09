@@ -29,10 +29,12 @@ _PACKAGES = {"cop": "cosmos77_cop", "thief": "cosmos77_thief"}
 _CONSOLES = {"cop": "cosmos-cop", "thief": "cosmos-thief"}
 
 
-def spawn_env() -> dict[str, str]:
-    """Inherit the hub env (GEMINI_API_KEY etc.) minus VIRTUAL_ENV so uv picks each venv."""
+def spawn_env(vary_seed: int | None = None, role: str = "") -> dict[str, str]:
+    """Hub env minus VIRTUAL_ENV; a seed arms per-role tie-break variety (demos only)."""
     env = dict(os.environ)
     env.pop("VIRTUAL_ENV", None)
+    if vary_seed is not None:
+        env["COSMOS_VARY_SEED"] = str(vary_seed + (1 if role == "thief" else 0))
     return env
 
 
@@ -45,11 +47,7 @@ def standing_argv(role: str) -> list[str]:
 
 
 def parity_windows(spec: RunSpec, settings: Settings) -> dict[str, str]:
-    """Window lists per role from the gid sort (ASCII: uppercase gids sort first).
-
-    ``sorted([our_gid, opponent_gid])[0]`` plays COP on the odd sub-games, so our cop
-    owns the odds only when our gid sorts first; our thief always owns the complement.
-    """
+    """Per-role window lists: first-sorted gid is COP on odds; our thief owns the rest."""
     ours_first = sorted([settings.standing_gids, spec.opponent_gid])[0] == settings.standing_gids
     odds = ",".join(str(w) for w in range(1, spec.windows + 1, 2))
     evens = ",".join(str(w) for w in range(2, spec.windows + 1, 2))
