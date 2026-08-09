@@ -85,7 +85,12 @@ def build(settings: Settings, run_id: str) -> dict[str, Any]:
         frames.extend(window)
         per_step.extend(checks)
         sealed_ok = sealed_ok and all_records_ok(doc)
-    verdict = "Verified OK" if per_step and all(per_step) and sealed_ok else "TAMPERED"
+    if not per_step:
+        verdict = "NOT PLAYED (technical window — no sealed moves to audit)"
+    elif all(per_step) and sealed_ok:
+        verdict = "Verified OK"
+    else:
+        verdict = "TAMPERED"
     return {
         "meta": {"run_id": run_id, "game_id": result.get("game_id"),
                  "game_uid": result.get("game_uid"), "windows": len(logs),

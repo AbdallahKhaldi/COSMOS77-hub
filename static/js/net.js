@@ -78,7 +78,7 @@ export function connectLive({ perspective, lastSeq = 0, onEnvelope, onLink }) {
    socket filters to the requested perspective just like the server does.
    Everything downstream (timeline/director/hud) is the identical code path. */
 export function connectDemo({ perspective, onEnvelope, onLink,
-  fixtureUrl = "/static/fixtures/demo-live.json", stepMs = 850 }) {
+  fixtureUrl = "/static/fixtures/demo-live.json", stepMs = 650 }) {
   let closed = false;
   let timer = null;
 

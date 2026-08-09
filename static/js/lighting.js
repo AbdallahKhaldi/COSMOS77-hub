@@ -1,4 +1,4 @@
-/* lighting.js — the time-of-day rig (ARENA V2). Two presets over ONE fixed
+/* lighting.js — the time-of-day rig (ARENA V3). Two presets over ONE fixed
    set of lights (never added/removed — color/intensity/position animate, so
    zero shader recompiles on toggle):
      day   — DEFAULT. Golden-hour Sky.js dome, warm sun (physical intensity
@@ -6,10 +6,38 @@
              shadow.intensity=1 (med/high tiers).
      night — the v1 look: moon dirlight, deep hemi, 2 hero point lights,
              heavier fog; shadow.intensity=0 keeps the map bound (no recompile).
+   V3: scene.environment is a tiny GENERATED gradient cubemap (6 canvas faces,
+   zero external requests) so glass windows / car paint pick up soft sky
+   reflections; only environmentIntensity changes per preset (day 0.5, night
+   0.18) — the texture is set once at boot, so toggling never recompiles.
    Bloom values per preset are exported for scene.js's composer. */
 
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
+
+/* one 16px canvas face: vertical gradient through [stop, css] pairs */
+function envFace(stops) {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 16;
+  const ctx = cv.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 0, 16);
+  for (const [v, c] of stops) g.addColorStop(v, c);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 16, 16);
+  return cv;
+}
+
+function makeEnvCubemap() {
+  const horizon = [[0, "#cfe0f0"], [0.55, "#f0d8b0"], [0.8, "#8a8074"], [1, "#5a564c"]];
+  const top = [[0, "#bcd8f2"], [1, "#e8f0f8"]];
+  const bottom = [[0, "#5a564c"], [1, "#4c483f"]];
+  // order: +x, -x, +y, -y, +z, -z
+  const faces = [horizon, horizon, top, bottom, horizon, horizon].map(envFace);
+  const tex = new THREE.CubeTexture(faces);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 export const PRESETS = {
   day: {
@@ -23,6 +51,7 @@ export const PRESETS = {
     bloom: { threshold: 1.0, strength: 0.25, radius: 0.3 },
     shadow: 1,                     // shadow.intensity
     overlayGain: 1.6,              // additive cell overlay boost on bright asphalt
+    env: 0.5,                      // environmentIntensity (glass/paint glints)
   },
   night: {
     sun: { color: 0x8fb4ff, intensity: 0.55 },        // the v1 "moon"
@@ -34,6 +63,7 @@ export const PRESETS = {
     bloom: { threshold: 0.85, strength: 0.55, radius: 0.35 },
     shadow: 0,
     overlayGain: 1.0,
+    env: 0.18,
   },
 };
 
@@ -43,6 +73,10 @@ export function createLighting({ scene, tier }) {
   sky.scale.setScalar(450);        // inside camera far=600, outside the city
   scene.add(sky);
   const sunDir = new THREE.Vector3();
+
+  /* ---- generated env cubemap: set ONCE, intensity animates per preset ---- */
+  scene.environment = makeEnvCubemap();
+  scene.environmentIntensity = 0.5;
 
   /* ---- the fixed rig ---- */
   const hemi = new THREE.HemisphereLight(0xffe3c4, 0x8a7860, 0.6);
@@ -60,6 +94,9 @@ export function createLighting({ scene, tier }) {
     sun.shadow.camera.far = 320;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.5;
+    // V3 softness: r185 deprecates PCFSoft and runs PCFShadowMap, which
+    // honors radius — verified live (console deprecation warning). Map stays 2048.
+    sun.shadow.radius = 4;
   }
 
   const hero1 = new THREE.PointLight(0xffb46b, 0, 60, 2);
@@ -102,6 +139,8 @@ export function createLighting({ scene, tier }) {
 
     hero1.intensity = heroBase[0] * p.hero;
     hero2.intensity = heroBase[1] * p.hero;
+
+    scene.environmentIntensity = p.env;
 
     if (!scene.fog) scene.fog = new THREE.FogExp2(p.fog.color, p.fog.density);
     else { scene.fog.color.set(p.fog.color); scene.fog.density = p.fog.density; }

@@ -1,10 +1,15 @@
-/* scene.js — the arena orchestrator (ARENA V2). The board is a golden-hour
+/* scene.js — the arena orchestrator (ARENA V3). The board is a golden-hour
    city district by default (config map_area is literally "New York"); the v1
    night look survives as a preset. This file only wires the stack together:
-     lighting.js — day/night presets over one fixed light rig
-     world.js    — roads-and-blocks city ON the board + skyline ring (seeded)
-     cameras.js  — TOP / CHASE camera system
-   plus renderer, overlay layer, half-res bloom and the ?debug=1 draw ledger.
+     lighting.js — day/night presets over one fixed light rig (+ generated
+                   gradient env cubemap so glass/paint pick up reflections)
+     world.js    — roads-and-blocks city ON the board + skyline ring (seeded;
+                   V3 adds street wear, billboards, night steam — a second
+                   seeded rng so the V2 block plan is untouched)
+     cameras.js  — TOP (cinematic tactical) / CHASE camera system
+   plus renderer, overlay layer, half-res bloom, the V3 grade pass (subtle
+   vignette + saturation/contrast lift; skipped entirely on q=low) and the
+   ?debug=1 draw ledger.
    Game mapping (cellToWorld) is UNCHANGED — cells are road intersections. */
 
 import * as THREE from "three";
@@ -12,6 +17,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { createLighting } from "./lighting.js";
 import { createWorld } from "./world.js";
@@ -36,11 +42,11 @@ export function mulberry32(seed) {
   };
 }
 
-/* DPR clamp 1.5 across the board (spec); shadows ON for med/high (day). */
+/* DPR clamp 1.5 (V3: 2.0 allowed ONLY at q=high); shadows on med/high (day) */
 export const QUALITY = {
   low: { dpr: 1.0, bloom: false, shadows: false },
   med: { dpr: 1.5, bloom: true, shadows: true },
-  high: { dpr: 1.5, bloom: true, shadows: true },
+  high: { dpr: 2.0, bloom: true, shadows: true },
 };
 
 export function qualityFromQuery() {
@@ -48,9 +54,41 @@ export function qualityFromQuery() {
   return QUALITY[q] ? q : "med";
 }
 
+/* V3 grade pass — vignette + slight saturation/contrast lift, pre-Output
+   (linear space, before tone mapping — filmic-correct). One fullscreen quad. */
+const GradeShader = {
+  name: "CosmosGradeShader",
+  uniforms: {
+    tDiffuse: { value: null },
+    uVig: { value: 0.28 },   // vignette strength
+    uSat: { value: 1.07 },   // saturation lift
+    uCon: { value: 1.045 },  // contrast lift
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uVig, uSat, uCon;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = mix(vec3(l), c.rgb, uSat);
+      c.rgb = (c.rgb - 0.5) * uCon + 0.5;
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= 1.0 - uVig * smoothstep(0.32, 0.72, d);
+      gl_FragColor = c;
+    }`,
+};
+
 export function createArena(container, { quality = "med", preset = "day" } = {}) {
   const tier = QUALITY[quality] || QUALITY.med;
-  const rng = mulberry32(770077);
+  const rng = mulberry32(770077);        // the V2 block-plan stream (untouched)
+  const rngDetail = mulberry32(770078);  // V3 dressing: wear/billboards/steam
   const debug = new URLSearchParams(location.search).get("debug") === "1";
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -63,9 +101,10 @@ export function createArena(container, { quality = "med", preset = "day" } = {})
 
   const scene = new THREE.Scene();
 
-  const camera = new THREE.PerspectiveCamera(40, 16 / 10, 0.5, 600);
-  camera.position.set(0, 95, 55);
-  camera.lookAt(0, 0, 0);
+  /* canonical TOP pose = polar 0.95 rad, distance 88, FOV 44 (cameras.js) */
+  const camera = new THREE.PerspectiveCamera(44, 16 / 10, 0.5, 600);
+  camera.position.set(0, 88 * Math.cos(0.95), 88 * Math.sin(0.95));
+  camera.lookAt(0, 1.5, 0);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -74,7 +113,7 @@ export function createArena(container, { quality = "med", preset = "day" } = {})
 
   const lighting = createLighting({ scene, tier });
   const world = createWorld({
-    scene, tier, rng,
+    scene, tier, rng, rngDetail,
     maxAniso: Math.min(8, renderer.capabilities.getMaxAnisotropy()),
     CELL, GRID, cellToWorld,
   });
@@ -114,7 +153,8 @@ export function createArena(container, { quality = "med", preset = "day" } = {})
     commit() { overlay.instanceColor.needsUpdate = true; },
   };
 
-  /* ---- composer: half-res bloom + OutputPass (med/high); raw render on low ---- */
+  /* ---- composer: half-res bloom + grade + OutputPass (med/high);
+          raw render on low — the grade pass is skipped entirely there ---- */
   let composer = null;
   let bloomPass = null;
   if (tier.bloom) {
@@ -122,6 +162,7 @@ export function createArena(container, { quality = "med", preset = "day" } = {})
     composer.addPass(new RenderPass(scene, camera));
     bloomPass = new UnrealBloomPass(new THREE.Vector2(container.clientWidth / 2, container.clientHeight / 2), 0.55, 0.35, 0.85);
     composer.addPass(bloomPass);
+    composer.addPass(new ShaderPass(GradeShader));
     composer.addPass(new OutputPass());
   }
 
@@ -155,8 +196,8 @@ export function createArena(container, { quality = "med", preset = "day" } = {})
   ro.observe(container);
 
   /* ---- ?debug=1: draw-call ledger every ~2 s. "scene" counts the scene
-     pass only (the number the ≤80 budget governs, same metric as v1's ~33);
-     "frame" adds the bloom chain + output pass quads. ---- */
+     pass only (the number the ≤90 budget governs, same metric as v1's ~33);
+     "frame" adds the bloom chain + grade + output pass quads. ---- */
   if (debug) renderer.info.autoReset = false;
   let elapsed = 0;
   let dbgT = 0, dbgFrames = 0, dbgScene = 0;

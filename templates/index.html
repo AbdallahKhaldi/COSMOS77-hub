@@ -15,111 +15,124 @@
 } }
 </script>
 </head>
-<body>
+<body class="game">
 <div class="scanlines" aria-hidden="true"></div>
 
-<header class="statusbar">
-  <a class="brand" href="/">COSMOS77 <b>ARENA</b></a>
-  <span class="dot" id="dot" aria-hidden="true"></span>
-  <span class="statustext" id="statustext" aria-live="polite">BOOTING…</span>
-  <nav aria-label="site">
-    <a href="/" aria-current="page">Arena</a>
-    <a href="/docs">Challenge us</a>
-    <a href="/league">League</a>
-    <a href="/admin">Ops</a>
-  </nav>
-</header>
+<!-- ====================== THE WORLD (full viewport) ====================== -->
+<section class="stage" id="stage" aria-label="3D bodycam viewer — the city district"></section>
 
-<main class="wrap rise">
-  <div class="stage-grid">
-    <!-- ============================ THE STAGE ============================ -->
-    <section class="stage" id="stage" aria-label="3D bodycam viewer">
-      <div class="truth-label" id="truthLabel">
-        LOCAL TRUTH — <b id="truthRole">POLICE PERSPECTIVE</b>
-      </div>
-      <div class="banner locked" id="banner" role="status" aria-live="polite">STANDBY</div>
-      <div class="pill" id="linkPill">booting…</div>
-      <div class="wanted" id="wanted" aria-live="polite">★★★★★</div>
-      <div class="stage-ctl" id="stageCtl">
-        <div class="seg seg--mini" id="camSeg" role="group" aria-label="camera mode">
-          <button data-cam="top" aria-pressed="true">Top</button>
-          <button data-cam="chase" aria-pressed="false">Chase</button>
-        </div>
-        <div class="seg seg--mini" id="dnSeg" role="group" aria-label="time of day">
-          <button data-preset="day" aria-pressed="true">Day</button>
-          <button data-preset="night" aria-pressed="false">Night</button>
-        </div>
-      </div>
-      <div class="slam" id="slam" aria-hidden="true">
-        <div class="word" id="slamWord"></div>
-        <div class="detail mono" id="slamDetail"></div>
-      </div>
-    </section>
-
-    <!-- ============================= THE HUD ============================= -->
-    <aside class="hud">
-      <div class="panel">
-        <h3>Feed <span class="lit">· one agent's truth at a time</span></h3>
-        <div class="seg" id="perspectiveSeg" role="group" aria-label="perspective">
-          <button class="p-cop" data-p="police" aria-pressed="true">🚓 Police</button>
-          <button class="p-thief" data-p="thief" aria-pressed="false">🚗 Thief</button>
-        </div>
-        <p class="sub" style="margin:9px 0 0">Switching re-opens the feed as the other
-        agent's local truth — never both at once. The opponent only ever appears as the
-        labeled <b class="c-road">BELIEF</b> hologram.</p>
-      </div>
-
-      <div class="panel">
-        <h3>Scoreboard</h3>
-        <div class="scorestrip">
-          <div class="side us"><div class="name" id="nameUs">COSMOS77 · POLICE</div><div class="pts" id="scoreUs">0</div></div>
-          <div class="vs">VS</div>
-          <div class="side them"><div class="name" id="nameThem">OPPONENT (BELIEF ONLY)</div><div class="pts" id="scoreThem">0</div></div>
-        </div>
-        <div class="pips" id="pips" aria-label="window results"></div>
-        <p class="sub mono" id="windowLine" style="text-align:center;margin:8px 0 0">awaiting engagement</p>
-      </div>
-
-      <div class="panel">
-        <h3>Belief heatmap <span class="lit">· mandated grid · minimap</span></h3>
-        <div class="seg" id="hmSeg" role="group" aria-label="heatmap layer" style="margin-bottom:9px">
-          <button data-layer="belief" aria-pressed="true">Belief</button>
-          <button data-layer="scent" aria-pressed="false">Scent</button>
-        </div>
-        <div class="heatmap" id="heatmap" role="img" aria-label="belief heatmap over the 7 by 7 board"></div>
-        <div class="hm-legend" id="hmLegend"><span>POSTERIOR P(OPPONENT)</span><span>no data</span></div>
-        <div class="toggles" style="margin-top:9px">
-          <button class="tgl" id="tglScent" aria-pressed="true">3D scent decals</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>⦿ Radio intercepts</h3>
-        <div class="ticker" id="ticker" role="log" aria-live="polite"></div>
-      </div>
-
-      <div class="panel">
-        <h3>Commit ledger <span class="lit">· SHA-256</span></h3>
-        <div class="commits" id="commits"></div>
-      </div>
-    </aside>
+<!-- top-left: status chip + the LEGALITY badge -->
+<div class="hc hc-tl" role="region" aria-label="feed status">
+  <div class="glass chip" id="statusChip">
+    <span class="dot" id="dot" aria-hidden="true"></span>
+    <span class="chip-main" id="statustext" aria-live="polite">BOOTING…</span>
+    <span class="chip-sub mono" id="linkPill">booting…</span>
   </div>
+  <div class="glass truth-label" id="truthLabel">
+    LOCAL TRUTH — <b id="truthRole">POLICE PERSPECTIVE</b>
+  </div>
+</div>
 
-  <!-- ========================= CHALLENGE DRAWER ========================= -->
-  <details class="drawer panel panel--gold" id="drawer" style="margin-top:16px">
-    <summary>⚡ Challenge COSMOS77</summary>
-    <div class="grid2" style="margin-top:12px">
-      <div>
+<!-- top-center: compact score strip + turn banner -->
+<div class="hc hc-tc" role="region" aria-label="score">
+  <div class="glass score-mini">
+    <div class="side us"><span class="name" id="nameUs">COSMOS77 · POLICE</span><span class="pts" id="scoreUs">0</span></div>
+    <div class="mid">
+      <div class="pips" id="pips" aria-label="window results"></div>
+      <div class="stepline" id="windowLine">awaiting engagement</div>
+    </div>
+    <div class="side them"><span class="pts" id="scoreThem">0</span><span class="name" id="nameThem">OPPONENT (BELIEF ONLY)</span></div>
+  </div>
+  <div class="banner locked" id="banner" role="status" aria-live="polite">STANDBY</div>
+</div>
+
+<!-- top-right: MENU (also bound to Escape) -->
+<div class="hc hc-tr">
+  <button class="glass menu-btn" id="menuBtn" aria-haspopup="dialog" aria-expanded="false">☰ Menu</button>
+</div>
+
+<!-- bottom-right: the control cluster -->
+<div class="hc hc-br" role="region" aria-label="viewer controls">
+  <div class="seg seg--glass" id="camSeg" role="group" aria-label="camera mode">
+    <button data-cam="top" aria-pressed="true">Top</button>
+    <button data-cam="chase" aria-pressed="false">Chase</button>
+  </div>
+  <div class="seg seg--glass" id="dnSeg" role="group" aria-label="time of day">
+    <button data-preset="day" aria-pressed="true">Day</button>
+    <button data-preset="night" aria-pressed="false">Night</button>
+  </div>
+  <div class="seg seg--glass" id="perspectiveSeg" role="group"
+       aria-label="feed — chase from the cop or the thief, one local truth at a time">
+    <span class="seg-label" aria-hidden="true">Feed</span>
+    <button class="p-cop" data-p="police" aria-pressed="true">🚓 Police</button>
+    <button class="p-thief" data-p="thief" aria-pressed="false">🚗 Thief</button>
+  </div>
+</div>
+
+<!-- bottom-left: collapsible tactical panel (mandated belief heatmap) -->
+<div class="hc hc-bl" role="region" aria-label="tactical panel">
+  <div class="glass tacpanel" id="tacpanel">
+    <div class="tac-head">
+      <h3>Tactical <span class="lit">· belief · minimap</span></h3>
+      <span class="wanted" id="wanted" aria-live="polite">★★★★★</span>
+      <button class="tac-collapse" id="tacToggle" aria-expanded="true" aria-controls="tacBody"
+              title="collapse the tactical panel">▾</button>
+    </div>
+    <div class="tac-body" id="tacBody">
+      <div class="seg" id="hmSeg" role="group" aria-label="heatmap layer" style="margin-bottom:9px">
+        <button data-layer="belief" aria-pressed="true">Belief</button>
+        <button data-layer="scent" aria-pressed="false">Scent</button>
+      </div>
+      <div class="heatmap" id="heatmap" role="img" aria-label="belief heatmap over the 7 by 7 board"></div>
+      <div class="hm-legend" id="hmLegend"><span>POSTERIOR P(OPPONENT)</span><span>no data</span></div>
+      <div class="toggles">
+        <button class="tgl" id="tglScent" aria-pressed="true">3D scent decals</button>
+      </div>
+      <p class="sub tacnote">The opponent appears only as the labeled
+      <b class="c-road">BELIEF</b> hologram — our posterior, never their truth.</p>
+    </div>
+  </div>
+</div>
+
+<!-- bottom-center: radio + commit ticker, one unobtrusive line -->
+<div class="hc hc-bc" role="region" aria-label="radio intercepts and commit ledger">
+  <div class="glass strip" id="strip">
+    <span class="strip-tag" id="stripTag">Radio</span>
+    <span class="strip-line" id="stripLine" role="log" aria-live="polite">// comms channel open — awaiting engagement</span>
+  </div>
+</div>
+
+<!-- START hero — attract mode only -->
+<div class="hero" id="hero">
+  <div class="hero-mark">COSMOS<b>77</b> ARENA</div>
+  <button class="hero-start" id="heroStart">▶ Start Pursuit</button>
+  <div class="hero-sub">live feed connects automatically when a real game runs</div>
+</div>
+
+<!-- verdict slam -->
+<div class="slam" id="slam" aria-hidden="true">
+  <div class="word" id="slamWord"></div>
+  <div class="detail mono" id="slamDetail"></div>
+</div>
+
+<!-- ========================= ESC / PAUSE MENU ============================ -->
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="pause menu" hidden>
+  <div class="menu-veil" data-menu-close aria-hidden="true"></div>
+  <div class="menu-inner">
+    <a class="menu-brand" href="/">COSMOS<b>77</b> <span>ARENA</span></a>
+    <nav class="menu-list" id="menuList" aria-label="pause menu">
+      <button class="menu-item" data-act="resume">Resume</button>
+      <button class="menu-item" data-act="demo">Start Demo</button>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mChallenge">Challenge Us</button>
+      <div class="menu-sub" id="mChallenge" hidden>
         <p class="kicker">Our standing endpoints</p>
         <div class="urlrow"><span class="tag cop">COP</span><code id="epCop">loading…</code>
           <button class="btn btn--copy" id="epCopBtn" data-copy="">COPY</button></div>
         <div class="urlrow"><span class="tag thief">THIEF</span><code id="epThief">loading…</code>
           <button class="btn btn--copy" id="epThiefBtn" data-copy="">COPY</button></div>
         <p class="sub">Bare <span class="mono">GET</span> answers <b class="mono">406</b> — that is the
-        ready signal, not an error. Full guide on the <a href="/docs">challenge page</a>.</p>
-      </div>
-      <div>
-        <p class="kicker">Engage</p>
+        ready signal, not an error. Public friendlies are rate-limited: one at a time, 10 per day,
+        90&nbsp;s cooldown. Counted games can never start from the web. Full guide under BRIEFING.</p>
         <label class="f" for="chGid">Your group id</label>
         <input type="text" id="chGid" placeholder="e.g. best2934" maxlength="64">
         <label class="f" for="chCop">Your cop MCP URL</label>
@@ -137,16 +150,21 @@
         </div>
         <div class="watchlink" id="chResult" aria-live="polite"></div>
       </div>
-    </div>
-  </details>
-
-  <footer class="foot">
-    COSMOS77 CITY · one generation later — friendly runs stream one agent's local truth;
-    the bird's-eye lives only in <span class="mono">/replay</span> of settled games.<br>
-    three.js r185 © 2010-2026 Three.js Authors, MIT, vendored unmodified · fonts self-hosted under OFL
-    (<a href="/static/fonts/OFL-NOTICE.txt">notice</a>).
-  </footer>
-</main>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mReplays">Replays</button>
+      <div class="menu-sub" id="mReplays" hidden>
+        <p class="hint">settled games only — the bird's-eye reveal is legal there and only there.</p>
+        <div class="runs" id="runsList"><div class="runrow"><span class="rid">loading…</span></div></div>
+      </div>
+      <a class="menu-item" href="/league">League</a>
+      <a class="menu-item" href="/docs">Briefing</a>
+      <a class="menu-item" href="/admin">Ops</a>
+    </nav>
+    <p class="menu-note">FEED rides one agent's local truth at a time — switching closes the socket and
+    re-opens the other perspective; the opponent is only ever the labeled BELIEF hologram. ESC resumes.<br>
+    three.js r185 © Three.js Authors, MIT, vendored · Kenney kits CC0 · fonts OFL
+    (<a href="/static/fonts/OFL-NOTICE.txt">notice</a>).</p>
+  </div>
+</div>
 
 <!-- ============================== BOOTSTRAP ============================== -->
 <script type="module">
@@ -157,13 +175,14 @@ import { loadKenneyAssets } from "/static/js/assets.js";
 import { Timeline } from "/static/js/timeline.js";
 import { connectLive, connectDemo } from "/static/js/net.js";
 import { createDirector } from "/static/js/director.js";
-import { createHud, initChrome } from "/static/js/hud.js";
+import { createHud } from "/static/js/hud.js";
+import { initMenu } from "/static/js/menu.js";
 
 const params = new URLSearchParams(location.search);
-const demo = params.get("demo") === "1";
+const urlDemo = params.get("demo") === "1";
 let perspective = params.get("perspective") === "thief" ? "thief" : "police";
 
-/* ARENA V2: bright golden-hour city by default; night is a persisted toggle */
+/* bright golden-hour city by default; night is a persisted toggle */
 const PRESET_KEY = "cosmos77.arena.preset";
 let preset = "day";
 try { if (localStorage.getItem(PRESET_KEY) === "night") preset = "night"; } catch (_e) { /* private mode */ }
@@ -210,14 +229,26 @@ function vehicleFor(p) {
   runner.group.position.y = police ? -60 : 0;
   scent.setTint(police ? 0xff8a1e : 0x2b7fff); // we smell the OPPONENT's trail
   const v = police ? cruiser : runner;
-  arena.cameras.setChaseTarget(v.group); // CHASE follows OUR car only (live)
-  return v;
+  arena.cameras.setChaseTarget(v.group); // CHASE follows OUR car only (live);
+  return v;                              // in CHASE this glides behind the new car (600 ms)
 }
+
+/* source: "live" (real WS) or "demo" (fixture through the same path).
+   ?demo=1 boots straight into the demo; the START button needs no query. */
+let source = urlDemo ? "demo" : "live";
+let demoDone = false;
 
 const timeline = new Timeline(perspective);
 const hud = createHud({
-  perspective, demo,
+  perspective,
   onPerspective(p) { switchPerspective(p); },
+  onMode(m) {
+    // demo tape finished and we slid back to attract: re-arm the live socket
+    if (m === "attract" && source === "demo" && demoDone && !urlDemo) {
+      demoDone = false;
+      setSource("live");
+    }
+  },
 });
 const rig = { vehicle: vehicleFor(perspective), ghost, scent, barriers, trail };
 const director = createDirector({ arena, timeline, hud, rig });
@@ -227,28 +258,47 @@ function openSocket() {
   const opts = {
     perspective,
     onEnvelope: (env) => director.onEnvelope(env),
-    onLink: (s) => hud.setLink(s),
+    onLink: (s) => { if (s === "demo-done") demoDone = true; hud.setLink(s); },
   };
-  socket = demo ? connectDemo(opts) : connectLive(opts);
+  socket = source === "demo" ? connectDemo(opts) : connectLive(opts);
+}
+
+function setSource(next) {
+  if (socket) socket.close();
+  source = next;
+  hud.setSource(next);
+  openSocket();
+}
+
+/* THE button — starts the demo fixture immediately, same path as ?demo=1 */
+function startDemo() {
+  if (socket) socket.close();
+  demoDone = false;
+  director.reset(perspective, "attract");
+  source = "demo";
+  hud.setSource("demo");
+  openSocket();
 }
 
 function switchPerspective(p) {
   if (socket) socket.close();       // never two perspectives at once
   perspective = p;
-  rig.vehicle = vehicleFor(p);
+  const wasLive = director.mode === "live";
+  rig.vehicle = vehicleFor(p);      // CHASE lands behind the newly selected car
   hud.setPerspectiveChrome(p);
-  director.reset(p);                // clears the shared timeline too
+  director.reset(p, wasLive ? "live" : "attract"); // clears the shared timeline too
   const q = new URLSearchParams(location.search);
   q.set("perspective", p);
   history.replaceState(null, "", "?" + q.toString());
-  openSocket();                     // re-opens WS with the other perspective
+  openSocket();                     // re-opens the feed as the other local truth
 }
 
 hud.wireChrome();
+hud.setSource(source);
 hud.setMode("attract");
 hud.sysLine("// comms channel open — awaiting engagement");
 document.getElementById("tglScent").addEventListener("scent-toggle", (e) => scent.setVisible(e.detail));
-/* V2 stage controls: camera mode + time-of-day */
+document.getElementById("heroStart").addEventListener("click", startDemo);
 document.querySelectorAll("#camSeg button").forEach((b) => {
   b.addEventListener("click", () => {
     arena.cameras.setMode(b.dataset.cam);
@@ -261,7 +311,7 @@ document.querySelectorAll("#dnSeg button").forEach((b) => {
 applyPreset(preset);
 director.start();
 openSocket();
-initChrome();
+initMenu({ page: "arena", onStartDemo: startDemo });
 </script>
 </body>
 </html>

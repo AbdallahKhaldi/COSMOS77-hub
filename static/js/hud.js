@@ -1,18 +1,23 @@
-/* hud.js — the DOM layer (never WebGL): YOUR TURN / LOCKED banner, the
-   mandated 2D belief heatmap (doubles as the top-down minimap: self,
-   barriers, posterior), perceived-scent toggle, radio/hints ticker,
-   commit-hash ticker, score strip + window pips, wanted-stars flourish,
-   challenge drawer, endpoints with copy buttons. Local truth only — the
-   heatmap renders OUR posterior, never an opponent position. */
+/* hud.js — the DOM layer (never WebGL), ARENA V3: every element floats over
+   the full-viewport world as a glass cluster. This module owns the in-game
+   HUD: status chip (LIVE / DEMO REEL + run label), YOUR TURN / LOCKED banner,
+   the mandated 2D belief heatmap (doubles as the top-down minimap: self,
+   barriers, posterior) inside the collapsible bottom-left tactical panel,
+   perceived-scent toggle, wanted stars, compact score strip + window pips,
+   and the bottom-center one-line strip that interleaves radio intercepts
+   with commit-hash seals. The ESC menu lives in menu.js. Local truth only —
+   the heatmap renders OUR posterior, never an opponent position. */
 
 import { GRID, gridFromMap } from "./timeline.js";
-import { getJSON, postJSON } from "./net.js";
 
 const $ = (id) => document.getElementById(id);
 
+const STRIP_EVERY_MS = 4000; // interleave cadence for radio/seal lines
+const STRIP_KEEP = 12;
+
 function fmtHash(h) { return h ? h.slice(0, 12) : ""; }
 
-function toast(msg) {
+export function toast(msg) {
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = msg;
@@ -33,17 +38,18 @@ export function wireCopyButtons(scope) {
   });
 }
 
-export function createHud({ perspective, demo, onPerspective }) {
+export function createHud({ perspective, onPerspective, onMode }) {
   const els = {
     dot: $("dot"), statustext: $("statustext"),
     truthLabel: $("truthLabel"), truthRole: $("truthRole"),
     banner: $("banner"), pill: $("linkPill"), wanted: $("wanted"),
     slam: $("slam"), slamWord: $("slamWord"), slamDetail: $("slamDetail"),
     heatmap: $("heatmap"), hmLegend: $("hmLegend"),
-    ticker: $("ticker"), commits: $("commits"),
+    stripTag: $("stripTag"), stripLine: $("stripLine"),
     scoreUs: $("scoreUs"), scoreThem: $("scoreThem"),
     nameUs: $("nameUs"), nameThem: $("nameThem"), pips: $("pips"),
     windowLine: $("windowLine"),
+    hero: $("hero"), tacpanel: $("tacpanel"),
   };
 
   /* build the 49-cell heatmap grid once */
@@ -57,10 +63,46 @@ export function createHud({ perspective, demo, onPerspective }) {
 
   let panelLayer = "belief";        // belief | scent (heatmap panel view)
   let scent3d = true;
-  let lastHintCount = -1;
-  let lastCommitCount = -1;
   let starsHot = false;
+  let mode = "attract";
+  let source = "live";              // live | demo (the START button flips this)
+  let linkState = "open";
+  let runId = null;
 
+  /* -------- the one-line strip: radio + commit seals, interleaved -------- */
+  const stripQ = [];                // [{tag, cls, text}]
+  let stripIdx = 0;
+  let lastHintText = null;
+  let lastCommitHash = null;
+
+  function stripShow(entry) {
+    if (!entry) return;
+    els.stripTag.textContent = entry.tag;
+    els.stripTag.className = "strip-tag" + (entry.cls ? " " + entry.cls : "");
+    els.stripLine.classList.remove("roll");
+    void els.stripLine.offsetWidth; // restart the slide-in
+    els.stripLine.textContent = entry.text;
+    els.stripLine.classList.add("roll");
+  }
+
+  function stripPush(tag, cls, text) {
+    stripQ.push({ tag, cls, text });
+    if (stripQ.length > STRIP_KEEP) stripQ.shift();
+    stripIdx = stripQ.length - 1;
+    stripShow(stripQ[stripIdx]);
+  }
+
+  setInterval(() => { // alternate through recent lines, unobtrusively
+    if (stripQ.length < 2) return;
+    stripIdx = (stripIdx + 1) % stripQ.length;
+    stripShow(stripQ[stripIdx]);
+  }, STRIP_EVERY_MS);
+
+  function sysLine(text) {
+    stripPush("SYS", "", text);
+  }
+
+  /* ------------------------------ chrome bits ---------------------------- */
   function setPerspectiveChrome(p) {
     const police = p === "police";
     els.truthRole.textContent = police ? "POLICE PERSPECTIVE" : "THIEF PERSPECTIVE";
@@ -74,6 +116,31 @@ export function createHud({ perspective, demo, onPerspective }) {
   }
   setPerspectiveChrome(perspective);
 
+  function renderChip() {
+    if (mode === "live") {
+      els.statustext.textContent = source === "demo" ? "DEMO REEL" : "● LIVE — LOCAL TRUTH";
+      els.dot.className = "dot live";
+    } else {
+      els.statustext.textContent = source === "demo" ? "DEMO REEL — STANDBY" : "STANDBY — AWAITING RUN";
+      els.dot.className = "dot";
+    }
+    if (linkState === "reconnecting") {
+      els.pill.textContent = "reconnecting…";
+      els.pill.className = "chip-sub mono warn";
+      els.dot.className = "dot down";
+    } else {
+      els.pill.className = "chip-sub mono" + (source === "demo" ? " demo" : "");
+      if (mode === "live" && runId) {
+        els.pill.textContent = (source === "demo" ? "fixture · run " : "run ") + runId;
+      } else if (source === "demo") {
+        els.pill.textContent = "demo fixture — same path as the live feed";
+      } else {
+        els.pill.textContent = "attract mode — no run live";
+      }
+    }
+  }
+
+  /* ------------------------------- renders -------------------------------- */
   function renderHeatmap(state) {
     const v = state.view;
     const belief = v ? gridFromMap(v.posterior) : new Float64Array(GRID * GRID);
@@ -107,44 +174,25 @@ export function createHud({ perspective, demo, onPerspective }) {
       : `<span>PERCEIVED SCENT</span><span>authoritative field</span>`;
   }
 
-  function renderTicker(state) {
+  function renderStripFeeds(state) {
     const v = state.view;
     const hints = v && Array.isArray(v.hints) ? v.hints : [];
-    if (hints.length === lastHintCount) return;
-    lastHintCount = hints.length;
-    els.ticker.innerHTML = "";
-    const who = state.perspective === "police" ? "🚗 ROGUE" : "🚓 DETECTIVE";
-    hints.slice(-8).reverse().forEach((h) => {
-      const line = document.createElement("div");
-      line.className = "line";
-      line.innerHTML = `<span class="who">${who}</span> · ${escapeHtml(String(h))}`;
-      els.ticker.appendChild(line);
-    });
-    if (!hints.length) sysLine("// comms channel open — awaiting intercepts");
-  }
-
-  function sysLine(text) {
-    const line = document.createElement("div");
-    line.className = "line sys";
-    line.textContent = text;
-    els.ticker.prepend(line);
-    while (els.ticker.children.length > 10) els.ticker.lastChild.remove();
-  }
-
-  function renderCommits(state) {
-    if (state.commits.length === lastCommitCount) return;
-    lastCommitCount = state.commits.length;
-    els.commits.innerHTML = "";
-    if (!state.commits.length) {
-      els.commits.innerHTML = '<div class="c"><span class="h">— no sealed moves yet —</span></div>';
-      return;
+    if (hints.length) {
+      const latest = String(hints[hints.length - 1]);
+      if (latest !== lastHintText) {
+        lastHintText = latest;
+        const who = state.perspective === "police" ? "🚗 ROGUE" : "🚓 DETECTIVE";
+        stripPush("RADIO", "", who + " · " + latest);
+      }
     }
-    state.commits.slice(-6).reverse().forEach((c) => {
-      const row = document.createElement("div");
-      row.className = "c";
-      row.innerHTML = `<span class="h">${escapeHtml(fmtHash(c.hash))}…</span><span class="s">step ${escapeHtml(String(c.step))} · SHA-256 SEALED</span>`;
-      els.commits.appendChild(row);
-    });
+    const commits = state.commits;
+    if (commits.length) {
+      const c = commits[commits.length - 1];
+      if (c.hash !== lastCommitHash) {
+        lastCommitHash = c.hash;
+        stripPush("SEAL", "seal", fmtHash(c.hash) + "… · step " + c.step + " · SHA-256 SEALED");
+      }
+    }
   }
 
   function renderScores(state) {
@@ -162,7 +210,7 @@ export function createHud({ perspective, demo, onPerspective }) {
     }
     const v = state.view;
     els.windowLine.textContent = v
-      ? `window ${state.currentWindow} / ${state.windowsTotal} · step ${v.step ?? 0} / 35 · barriers left ${v.barriers_left ?? "—"}`
+      ? `W${state.currentWindow}/${state.windowsTotal} · STEP ${v.step ?? 0}/35 · BARRIERS ${v.barriers_left ?? "—"}`
       : `awaiting engagement`;
   }
 
@@ -208,38 +256,33 @@ export function createHud({ perspective, demo, onPerspective }) {
     }
   }
 
+  function setMode(m) {
+    mode = m;
+    if (els.hero) els.hero.classList.toggle("hidden", m !== "attract");
+    renderChip();
+    if (onMode) onMode(m);
+  }
+
   return {
     render(state, meta) {
+      runId = state.runId;
       renderBanner(state);
       renderHeatmap(state);
-      renderTicker(state);
-      renderCommits(state);
+      renderStripFeeds(state);
       renderScores(state);
       renderStars(state);
+      renderChip();
       if (meta && meta.env) renderEventFlourish(state, meta.env);
     },
-    setMode(mode) {
-      if (mode === "attract") {
-        els.statustext.textContent = demo ? "DEMO REEL — FIXTURE FEED" : "SYSTEM READY — AWAITING ENGAGEMENT";
-        els.dot.className = "dot";
-        els.pill.textContent = demo ? "demo fixture" : "attract mode — no run live";
-        els.pill.className = "pill" + (demo ? " demo" : "");
-      } else {
-        els.statustext.textContent = "● LIVE — LOCAL TRUTH FEED";
-        els.dot.className = "dot live";
-        els.pill.textContent = demo ? "demo fixture (live path)" : "live";
-        els.pill.className = "pill" + (demo ? " demo" : "");
-      }
+    setMode,
+    /* live socket vs demo fixture — flips the chip labels */
+    setSource(s) {
+      source = s === "demo" ? "demo" : "live";
+      lastHintText = null;
+      renderChip();
     },
-    setLink(linkState) {
-      if (linkState === "reconnecting") {
-        els.pill.textContent = "reconnecting…";
-        els.pill.className = "pill warn";
-        els.dot.className = "dot down";
-      } else if (linkState === "open") {
-        els.pill.className = "pill" + (demo ? " demo" : "");
-        els.pill.textContent = demo ? "demo fixture" : "link up";
-      }
+    setLink(s) {
+      if (s === "reconnecting" || s === "open") { linkState = s; renderChip(); }
     },
     setPerspectiveChrome,
     sysLine,
@@ -250,7 +293,6 @@ export function createHud({ perspective, demo, onPerspective }) {
         b.addEventListener("click", () => {
           panelLayer = b.dataset.layer;
           document.querySelectorAll("#hmSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-          lastHintCount = -1; // force repaint
         });
       });
       // 3D perceived-scent toggle (state read by the page glue via event)
@@ -260,13 +302,27 @@ export function createHud({ perspective, demo, onPerspective }) {
         tgl.setAttribute("aria-pressed", String(scent3d));
         tgl.dispatchEvent(new CustomEvent("scent-toggle", { bubbles: true, detail: scent3d }));
       });
-      // perspective switcher
+      // perspective switcher — the FEED seg (chase from the cop or the thief)
       document.querySelectorAll("#perspectiveSeg button").forEach((b) => {
         b.addEventListener("click", () => {
           if (b.getAttribute("aria-pressed") === "true") return;
           onPerspective(b.dataset.p);
         });
       });
+      // collapsible tactical panel — one tap folds it to a small chip
+      const tacToggle = $("tacToggle");
+      if (tacToggle && els.tacpanel) {
+        const setCollapsed = (c) => {
+          els.tacpanel.classList.toggle("collapsed", c);
+          tacToggle.setAttribute("aria-expanded", String(!c));
+          tacToggle.title = (c ? "expand" : "collapse") + " the tactical panel";
+        };
+        tacToggle.addEventListener("click", () =>
+          setCollapsed(!els.tacpanel.classList.contains("collapsed")));
+        if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
+          setCollapsed(true); // phones boot with the map chip, world stays clear
+        }
+      }
       wireCopyButtons(document);
     },
   };
@@ -276,58 +332,4 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (ch) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
   ));
-}
-
-/* ------------------------- challenge drawer + endpoints ------------------- */
-export async function initChrome() {
-  // our two endpoint URLs (from /api/status) with copy buttons
-  try {
-    const st = await getJSON("/api/status");
-    const eps = (st && (st.endpoints || st.urls)) || {};
-    const cop = eps.cop || eps.cop_url || "";
-    const thief = eps.thief || eps.thief_url || "";
-    if (cop) { $("epCop").textContent = cop; $("epCopBtn").setAttribute("data-copy", cop); }
-    if (thief) { $("epThief").textContent = thief; $("epThiefBtn").setAttribute("data-copy", thief); }
-    const line = st && (st.line || (st.agents ? `cop ${st.agents.cop || "?"} · thief ${st.agents.thief || "?"}` : ""));
-    if (line) $("statustext").textContent = String(line).toUpperCase();
-  } catch (_e) {
-    $("epCop").textContent = "(backend offline — endpoints unavailable)";
-    $("epThief").textContent = "(backend offline — endpoints unavailable)";
-  }
-
-  // ENGAGE — POST /api/challenge
-  const go = $("chGo");
-  if (!go) return;
-  go.addEventListener("click", async () => {
-    const single = $("chSingle").value.trim();
-    const body = {
-      kind: document.querySelector("#chKind button[aria-pressed='true']").dataset.kind,
-      opponent_gid: $("chGid").value.trim() || "challenger",
-      their_cop_url: single ? null : $("chCop").value.trim() || null,
-      their_thief_url: single ? null : $("chThief").value.trim() || null,
-      their_single_url: single || null,
-    };
-    const out = $("chResult");
-    go.disabled = true;
-    out.innerHTML = '<span class="mono c-road">dialing…</span>';
-    try {
-      const res = await postJSON("/api/challenge", body);
-      const watch = res.watch_url || "/";
-      out.innerHTML =
-        `<div class="urlrow"><span class="tag cop">WATCH</span><code>${escapeHtml(watch)}</code>` +
-        `<button class="btn btn--copy" data-copy="${escapeHtml(watch)}">COPY</button></div>` +
-        `<p class="sub mono">run ${escapeHtml(res.run_id || "?")} accepted — the bodycam goes live when the handshake lands.</p>`;
-      wireCopyButtons(out);
-    } catch (e) {
-      const msg = (e.data && (e.data.detail || e.data.error)) || e.message;
-      out.innerHTML = `<p class="sub c-siren mono">refused: ${escapeHtml(String(msg))}</p>`;
-    } finally {
-      go.disabled = false;
-    }
-  });
-  document.querySelectorAll("#chKind button").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll("#chKind button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    });
-  });
 }

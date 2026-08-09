@@ -15,108 +15,160 @@
 } }
 </script>
 </head>
-<body>
+<body class="game">
 <div class="scanlines" aria-hidden="true"></div>
 
-<header class="statusbar">
-  <a class="brand" href="/">COSMOS77 <b>ARENA</b></a>
-  <span class="dot" id="dot" aria-hidden="true"></span>
-  <span class="statustext" id="statustext" aria-live="polite">REPLAY CINEMA</span>
-  <nav aria-label="site">
-    <a href="/">Arena</a>
-    <a href="/docs">Challenge us</a>
-    <a href="/league">League</a>
-  </nav>
-</header>
+<!-- ====================== THE WORLD (full viewport) ====================== -->
+<section class="stage" id="stage" aria-label="replay viewer — bird's-eye of a settled game"></section>
 
-<main class="wrap rise">
-  <div class="stage-grid">
-    <section class="stage" id="stage" aria-label="replay viewer">
-      <div class="truth-label replay" id="truthLabel">
-        SETTLED GAME — <b>BIRD'S-EYE REPLAY (POST-AUDIT REVEAL)</b>
-      </div>
-      <div class="banner locked" id="verifyBadgeWrap" style="background:none;box-shadow:none;border:none;padding:0">
-        <span class="badge ok" id="verifyBadge">VERIFIED OK</span>
-      </div>
-      <div class="pill" id="metaPill">loading…</div>
-      <div class="stage-ctl" id="stageCtl">
-        <div class="seg seg--mini" id="camSeg" role="group" aria-label="camera mode">
-          <button data-cam="top" aria-pressed="true">Top</button>
-          <button data-cam="cop" aria-pressed="false">Chase cop</button>
-          <button data-cam="thief" aria-pressed="false">Chase thief</button>
-        </div>
-        <div class="seg seg--mini" id="dnSeg" role="group" aria-label="time of day">
-          <button data-preset="day" aria-pressed="true">Day</button>
-          <button data-preset="night" aria-pressed="false">Night</button>
-        </div>
-      </div>
-      <div class="slam" id="slam" aria-hidden="true">
-        <div class="word" id="slamWord"></div>
-        <div class="detail mono" id="slamDetail"></div>
-      </div>
-    </section>
+<!-- top-left: status chip + the LEGALITY badge -->
+<div class="hc hc-tl" role="region" aria-label="replay status">
+  <div class="glass chip">
+    <span class="dot" id="dot" aria-hidden="true"></span>
+    <span class="chip-main" id="statustext">REPLAY</span>
+    <span class="chip-sub mono" id="metaPill">loading…</span>
+  </div>
+  <div class="glass truth-label replay" id="truthLabel">
+    SETTLED GAME — <b>BIRD'S-EYE REPLAY (POST-AUDIT REVEAL)</b>
+  </div>
+</div>
 
-    <aside class="hud">
-      <div class="panel">
-        <h3>Windows</h3>
-        <div class="seg" id="windowSeg" role="group" aria-label="window selector"></div>
-        <p class="sub mono" id="stepLine" style="margin:9px 0 0">—</p>
-      </div>
+<!-- top-center: the integrity badge -->
+<div class="hc hc-tc" role="region" aria-label="integrity verdict">
+  <span class="badge ok" id="verifyBadge" role="status" aria-live="polite">VERIFIED OK</span>
+</div>
 
-      <div class="panel">
-        <h3>Belief vs truth <span class="lit">· the signature overlay</span></h3>
-        <div style="display:flex;align-items:baseline;gap:10px">
-          <div class="hitrate" id="hitrate">0%</div>
-          <div class="sub">ghost-on-target rate<br>(belief cell = true cell)</div>
-        </div>
-        <div class="toggles" style="margin-top:10px">
-          <button class="tgl" id="tglGhost" aria-pressed="true">Ghost trace</button>
-          <button class="tgl" id="tglTruth" aria-pressed="true">True path</button>
-          <button class="tgl" id="tglScent" aria-pressed="false">Scent</button>
-        </div>
-        <p class="sub" style="margin:9px 0 0">The <span style="color:#7ad7ff">cyan trace</span> is what our
-        agent <i>believed</i>; the <span class="c-thief">orange path</span> is where the opponent
-        actually drove — revealed only after settlement.</p>
-      </div>
+<!-- top-right: MENU (also bound to Escape) -->
+<div class="hc hc-tr">
+  <button class="glass menu-btn" id="menuBtn" aria-haspopup="dialog" aria-expanded="false">☰ Menu</button>
+</div>
 
-      <div class="panel">
-        <h3>Integrity</h3>
-        <p class="sub" style="margin:0">Every move is commit-sealed (SHA-256) and audited after the
-        window. The badge above flips to <b class="c-siren">TAMPERED</b> on any step whose reveal does
-        not match its commitment.</p>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
-          <div id="verdictLine" class="mono sub" style="flex:1;min-width:120px">—</div>
-          <button class="btn btn--copy" id="btnEnding" title="seek to the last 3 frames of this window">▶ ENDING</button>
-        </div>
-      </div>
+<!-- bottom-right: control cluster — both cars are legal here -->
+<div class="hc hc-br" role="region" aria-label="viewer controls">
+  <div class="seg seg--glass" id="camSeg" role="group" aria-label="camera mode">
+    <button data-cam="top" aria-pressed="true">Top</button>
+    <button data-cam="cop" aria-pressed="false">Chase cop</button>
+    <button data-cam="thief" aria-pressed="false">Chase thief</button>
+  </div>
+  <div class="seg seg--glass" id="dnSeg" role="group" aria-label="time of day">
+    <button data-preset="day" aria-pressed="true">Day</button>
+    <button data-preset="night" aria-pressed="false">Night</button>
+  </div>
+</div>
 
-      <div class="panel" id="endcard" style="display:none">
-        <h3>Final tape</h3>
+<!-- right side: collapsible glass panels -->
+<div class="rp-right" role="region" aria-label="replay analysis">
+  <div class="glass rp-panel" id="rpTruth">
+    <button class="rp-head" aria-expanded="true" data-collapse="rpTruth">
+      Belief vs truth <span class="lit">· the signature overlay</span>
+    </button>
+    <div class="rp-body">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <div class="hitrate" id="hitrate">0%</div>
+        <div class="sub" style="font-size:12px">ghost-on-target rate<br>(belief cell = true cell)</div>
+      </div>
+      <div class="toggles">
+        <button class="tgl" id="tglGhost" aria-pressed="true">Ghost trace</button>
+        <button class="tgl" id="tglTruth" aria-pressed="true">True path</button>
+        <button class="tgl" id="tglScent" aria-pressed="false">Scent</button>
+      </div>
+      <p class="sub" style="font-size:12px;margin:9px 0 0">The <span style="color:#7ad7ff">cyan trace</span> is what our
+      agent <i>believed</i>; the <span class="c-thief">orange path</span> is where the opponent
+      actually drove — revealed only after settlement.</p>
+    </div>
+  </div>
+
+  <div class="glass rp-panel" id="rpIntegrity">
+    <button class="rp-head" aria-expanded="true" data-collapse="rpIntegrity">Integrity</button>
+    <div class="rp-body">
+      <p class="sub" style="font-size:12px;margin:0">Every move is commit-sealed (SHA-256) and audited
+      after the window. The badge flips to <b class="c-siren">TAMPERED</b> on any step whose reveal
+      does not match its commitment.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
+        <div id="verdictLine" class="mono sub" style="flex:1;min-width:120px;font-size:12px">—</div>
+        <button class="btn btn--copy" id="btnEnding" title="seek to the last 3 frames of this window">▶ ENDING</button>
+      </div>
+      <div id="endcard" style="display:none;margin-top:10px">
+        <p class="kicker" style="margin-bottom:4px">Final tape</p>
         <table class="scoretab" id="scoreTable">
           <thead><tr><th>window</th><th>result</th><th class="r-us">us</th><th class="r-them">them</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-    </aside>
-  </div>
-
-  <!-- scrubber -->
-  <div class="panel scrub" style="margin-top:16px">
-    <button class="btn" id="btnPlay" aria-label="play or pause">▶ PLAY</button>
-    <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="scrub timeline">
-    <div class="seg" id="speedSeg" role="group" aria-label="playback speed">
-      <button data-x="0.5">0.5x</button>
-      <button data-x="1" aria-pressed="true">1x</button>
-      <button data-x="4">4x</button>
-      <button data-x="16">16x</button>
     </div>
   </div>
+</div>
 
-  <footer class="foot">
-    Bird's-eye is legal here and only here: settled games, positions mutually revealed by the audit
-    protocol. Live views show one agent's local truth only.
-  </footer>
-</main>
+<!-- verdict slam -->
+<div class="slam" id="slam" aria-hidden="true">
+  <div class="word" id="slamWord"></div>
+  <div class="detail mono" id="slamDetail"></div>
+</div>
+
+<!-- floating scrubber bar -->
+<div class="glass scrub-bar" role="region" aria-label="playback controls">
+  <button class="btn" id="btnPlay" aria-label="play or pause">▶ PLAY</button>
+  <div class="seg" id="windowSeg" role="group" aria-label="window selector"></div>
+  <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="scrub timeline">
+  <div class="seg" id="speedSeg" role="group" aria-label="playback speed">
+    <button data-x="0.5">0.5x</button>
+    <button data-x="1" aria-pressed="true">1x</button>
+    <button data-x="4">4x</button>
+    <button data-x="16">16x</button>
+  </div>
+  <p class="stepline" id="stepLine">—</p>
+</div>
+
+<!-- ========================= ESC / PAUSE MENU ============================ -->
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="pause menu" hidden>
+  <div class="menu-veil" data-menu-close aria-hidden="true"></div>
+  <div class="menu-inner">
+    <a class="menu-brand" href="/">COSMOS<b>77</b> <span>REPLAY</span></a>
+    <nav class="menu-list" id="menuList" aria-label="pause menu">
+      <button class="menu-item" data-act="resume">Resume</button>
+      <button class="menu-item" data-act="demo">Start Demo</button>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mChallenge">Challenge Us</button>
+      <div class="menu-sub" id="mChallenge" hidden>
+        <p class="kicker">Our standing endpoints</p>
+        <div class="urlrow"><span class="tag cop">COP</span><code id="epCop">loading…</code>
+          <button class="btn btn--copy" id="epCopBtn" data-copy="">COPY</button></div>
+        <div class="urlrow"><span class="tag thief">THIEF</span><code id="epThief">loading…</code>
+          <button class="btn btn--copy" id="epThiefBtn" data-copy="">COPY</button></div>
+        <p class="sub">Bare <span class="mono">GET</span> answers <b class="mono">406</b> — that is the
+        ready signal, not an error. Public friendlies are rate-limited: one at a time, 10 per day,
+        90&nbsp;s cooldown. Counted games can never start from the web. Full guide under BRIEFING.</p>
+        <label class="f" for="chGid">Your group id</label>
+        <input type="text" id="chGid" placeholder="e.g. best2934" maxlength="64">
+        <label class="f" for="chCop">Your cop MCP URL</label>
+        <input type="url" id="chCop" placeholder="https://…/mcp" maxlength="300">
+        <label class="f" for="chThief">Your thief MCP URL</label>
+        <input type="url" id="chThief" placeholder="https://…/mcp" maxlength="300">
+        <label class="f" for="chSingle">…or one URL for both roles</label>
+        <input type="url" id="chSingle" placeholder="optional single endpoint" maxlength="300">
+        <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">
+          <div class="seg" id="chKind" role="group" aria-label="match kind">
+            <button data-kind="f1" aria-pressed="true">F1 · 1 window</button>
+            <button data-kind="f2" aria-pressed="false">F2 · 6 windows</button>
+          </div>
+          <button class="btn btn--engage" id="chGo">⚡ Engage</button>
+        </div>
+        <div class="watchlink" id="chResult" aria-live="polite"></div>
+      </div>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mReplays">Replays</button>
+      <div class="menu-sub" id="mReplays" hidden>
+        <p class="hint">settled games only — the bird's-eye reveal is legal there and only there.</p>
+        <div class="runs" id="runsList"><div class="runrow"><span class="rid">loading…</span></div></div>
+      </div>
+      <a class="menu-item" href="/league">League</a>
+      <a class="menu-item" href="/docs">Briefing</a>
+      <a class="menu-item" href="/admin">Ops</a>
+    </nav>
+    <p class="menu-note">Bird's-eye is legal here and only here: settled games, positions mutually
+    revealed by the audit protocol. Live views show one agent's local truth only. ESC resumes.<br>
+    three.js r185 © Three.js Authors, MIT, vendored · Kenney kits CC0 · fonts OFL
+    (<a href="/static/fonts/OFL-NOTICE.txt">notice</a>).</p>
+  </div>
+</div>
 
 <script type="module" src="/static/js/replay.js"></script>
 </body>

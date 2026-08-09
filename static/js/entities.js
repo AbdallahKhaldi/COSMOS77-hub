@@ -1,11 +1,13 @@
-/* entities.js — everything that believes or blocks (ARENA V2). Vehicles moved
+/* entities.js — everything that believes or blocks (ARENA V3). Vehicles moved
    to vehicles.js; this file keeps the BELIEF ghost, scent decals, the barrier
-   pool (now striped ROADBLOCK barricades dropped across intersections) and the
+   pool (striped ROADBLOCK barricades dropped across intersections) and the
    trail ring. Pools preallocated to the config's hard caps (49 cells, 14
-   barriers); per-frame work is matrix/color writes only. LEGALITY IS THE
-   DESIGN: the opponent is never drawn — only THE BELIEF GHOST, a labeled
-   hologram of our posterior. Each layer has setPreset("day"|"night") gains so
-   it reads on bright asphalt AND in the neon night. */
+   barriers); per-frame work is matrix/color/uniform writes only. LEGALITY IS
+   THE DESIGN: the opponent is never drawn — only THE BELIEF GHOST, a labeled
+   hologram of our posterior. V3 upgrades the exact-lock hologram to a custom
+   fresnel-rim ShaderMaterial with a scanline shimmer (frozen under
+   prefers-reduced-motion) + the soft pulsing ground ring. Each layer has
+   setPreset("day"|"night") gains so it reads on bright asphalt AND at night. */
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -43,6 +45,46 @@ export function makeLabelSprite(text, cssColor, px = 96) {
   return spr;
 }
 
+/* V3 hologram material — fresnel rim + scanline shimmer, additive. Faces
+   glow at grazing angles (rim), horizontal scanlines crawl up the volume.
+   Fade is encoded in rgb (blending is SRC_ALPHA/ONE with alpha 1, so color
+   scale == opacity). Shared by the live ghost and the replay marker. */
+export function holoMaterial(hex = 0x7ad7ff) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(hex) },
+      uTime: { value: 0 },
+      uBase: { value: 0.10 },  // faces
+      uRim: { value: 0.6 },    // fresnel edge push
+      uScan: { value: 0.28 },  // scanline depth
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vWorld;
+      void main() {
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorld = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor;
+      uniform float uTime, uBase, uRim, uScan;
+      varying vec3 vNormal;
+      varying vec3 vWorld;
+      void main() {
+        vec3 viewDir = normalize(cameraPosition - vWorld);
+        float fres = pow(1.0 - abs(dot(normalize(vNormal), viewDir)), 2.2);
+        float scan = 1.0 - uScan * (0.5 + 0.5 * sin(vWorld.y * 14.0 - uTime * 5.0));
+        vec3 col = uColor * (uBase + uRim * fres) * scan;
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
 /* orange/white work-zone diagonals for the roadblock barricades */
 function barricadeTexture() {
   const cv = document.createElement("canvas");
@@ -60,8 +102,8 @@ function barricadeTexture() {
 
 /* THE BELIEF GHOST — the posterior as a holographic presence.
    fuzzy: diffuse multi-cell shimmer (instanced additive quads, 1 call)
-   exact: solid hologram = additive volume + BackSide shell (fresnel-ish rim)
-          + soft pulsing ring on the intersection (3 calls)
+   exact: solid hologram = ONE fresnel-rim scanline cylinder (custom shader)
+          + soft pulsing ring on the intersection (2 calls)
    always labeled BELIEF (sprite). Day preset boosts every gain so the
    hologram pops against sunlit asphalt; it stays clearly non-physical. */
 export function createGhost() {
@@ -85,22 +127,13 @@ export function createGhost() {
   }
   cloud.instanceMatrix.needsUpdate = true;
 
-  const volume = new THREE.Mesh(
-    new THREE.BoxGeometry(6.6, 3.2, 6.6),
-    new THREE.MeshBasicMaterial({
-      color: HOLO, transparent: true, opacity: 0.16,
-      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
-    }),
+  /* V3: the exact-lock hologram — one fresnel/scanline cylinder */
+  const holoMat = holoMaterial(HOLO);
+  const holo = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.35, 3.35, 3.4, 28, 1, true),
+    holoMat,
   );
-  volume.position.y = 1.7;
-  const shell = new THREE.Mesh( // BackSide shell = cheap fresnel-ish rim
-    new THREE.BoxGeometry(7.0, 3.5, 7.0),
-    new THREE.MeshBasicMaterial({
-      color: HOLO, transparent: true, opacity: 0.2, side: THREE.BackSide,
-      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
-    }),
-  );
-  shell.position.y = 1.8;
+  holo.position.y = 1.72;
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(3.1, 4.15, 40),
     new THREE.MeshBasicMaterial({
@@ -111,7 +144,7 @@ export function createGhost() {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.42;
   const exactGroup = new THREE.Group();
-  exactGroup.add(volume, shell, ring);
+  exactGroup.add(holo, ring);
   exactGroup.visible = false;
 
   const label = makeLabelSprite("BELIEF", "#7ad7ff");
@@ -125,15 +158,15 @@ export function createGhost() {
   let mode = "none"; // none | fuzzy | exact
   let exactRC = null;
   /* per-preset gains: the day city is bright — push the hologram harder */
-  let G = { cloudGain: 2.6, cloudMax: 1.8, vol: 0.3, volPulse: 0.1, shell: 0.32, ring: 0.6 };
+  let G = { cloudGain: 2.6, cloudMax: 1.8, base: 0.12, basePulse: 0.05, rim: 0.62, ring: 0.6 };
 
   return {
     group,
     setPreset(p) {
       G = p === "night"
-        ? { cloudGain: 1.8, cloudMax: 1.15, vol: 0.13, volPulse: 0.08, shell: 0.2, ring: 0.4 }
-        : { cloudGain: 2.6, cloudMax: 1.8, vol: 0.3, volPulse: 0.1, shell: 0.32, ring: 0.6 };
-      shell.material.opacity = G.shell;
+        ? { cloudGain: 1.8, cloudMax: 1.15, base: 0.06, basePulse: 0.03, rim: 0.4, ring: 0.4 }
+        : { cloudGain: 2.6, cloudMax: 1.8, base: 0.12, basePulse: 0.05, rim: 0.62, ring: 0.6 };
+      holoMat.uniforms.uRim.value = G.rim;
     },
     setPosterior(grid49, confidence) {
       let best = 0, bestI = -1;
@@ -176,7 +209,8 @@ export function createGhost() {
         const pulse = REDUCED ? 1 : 0.9 + 0.12 * Math.sin(t * 5);
         exactGroup.scale.set(pulse, 1, pulse);
         const wave = REDUCED ? 0.5 : 0.5 + 0.5 * Math.sin(t * 5);
-        volume.material.opacity = G.vol - G.volPulse / 2 + G.volPulse * wave;
+        holoMat.uniforms.uTime.value = REDUCED ? 0 : t; // frozen scanlines
+        holoMat.uniforms.uBase.value = G.base - G.basePulse / 2 + G.basePulse * wave;
         ring.material.opacity = G.ring * (REDUCED ? 1 : 0.72 + 0.28 * Math.sin(t * 3));
         label.position.set(p.x, 6.2, p.z);
         label.visible = true;

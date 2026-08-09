@@ -73,6 +73,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
           rig.trail.push(from.x, from.z);
           const heading = Math.atan2(to.x - from.x, to.z - from.z);
           const g = rig.vehicle.group;
+          arena.cameras.kick(); // V3: CHASE FOV kick as our car starts a move
           addTween(from, to, dur, (b, a, k) => {
             tmpA.copy(a); tmpB.copy(b);
             g.position.lerpVectors(tmpA, tmpB, k);
@@ -123,7 +124,13 @@ export function createDirector({ arena, timeline, hud, rig }) {
     cursor += 1;
     const prev = state;
     state = applyEvent(state, env);
-    if (env.type !== "status" && mode !== "live") setMode("live");
+    // Only a gameful envelope leaves attract: real turns, window/series ends, or a
+    // snapshot that actually carries a game to catch up on. A standing snapshot
+    // (agents idle, no run) must never hide the START hero.
+    const gameful = env.type === "view" || env.type === "window_end" ||
+      env.type === "series_end" ||
+      (env.type === "snapshot" && !!(env.payload && env.payload.view));
+    if (gameful && mode !== "live") setMode("live");
     applyToRig(prev, state, env, moveDuration());
     hud.render(state, { backlog: backlog(), mode, env });
     if (env.type === "window_end") {
@@ -194,8 +201,10 @@ export function createDirector({ arena, timeline, hud, rig }) {
     setAttract() { setMode("attract"); },
     get state() { return state; },
     get mode() { return mode; },
-    /* full reset on perspective switch — new socket, new truth */
-    reset(perspective) {
+    /* full reset on perspective switch — new socket, new truth. V3: the
+       caller picks the landing mode ("live" keeps the HUD hot on a feed
+       switch mid-run, so the hero never flashes between perspectives). */
+    reset(perspective, nextMode = "attract") {
       timeline.reset(perspective);
       cursor = 0;
       tweens = [];
@@ -207,8 +216,8 @@ export function createDirector({ arena, timeline, hud, rig }) {
       arena.overlay.clear();
       arena.overlay.commit();
       arena.cameras.reframe();
-      setMode("attract");
-      hud.render(state, { backlog: 0, mode: "attract", env: null });
+      setMode(nextMode === "live" ? "live" : "attract");
+      hud.render(state, { backlog: 0, mode, env: null });
     },
   };
 }

@@ -1,4 +1,4 @@
-/* world.js — the board IS a city district (ARENA V2). The 7×7 cells are road
+/* world.js — the board IS a city district (ARENA V3). The 7×7 cells are road
    intersections, agents drive ON the road grid, and the 36 spaces between the
    roads are real blocks: low-rise buildings, parks, parking lots. The tall
    skyline stays OUTSIDE the board.
@@ -7,15 +7,20 @@
    time, in fixed order, regardless of quality tier or preset) — realization
    consumes no randomness. So every viewer sees the same city, and the plan can
    be re-realized later with Kenney glb geometry (upgrade()) without touching
-   the rng stream.
+   the rng stream. V3's dressing (street wear, billboards, steam vents) rolls
+   on a SECOND seeded stream (rngDetail) so the V2 block plan is bit-identical.
 
    Draw-call ledger (day, kenney-upgraded): ground 1, road 1, slabs 1, grass 1,
    lots 1, trees 3, interior bake 1, outer-ring bake 1, parked bake 1, poles 1,
-   heads 1, posts 1, plates 1, hydrants 1 ≈ 16 world calls. Night adds windows,
-   pools, 3 sign meshes. Procedural fallback trades the 3 bakes for ~7 calls. */
+   heads 1, posts 1, plates 1, hydrants 1, billboards 1 ≈ 17 world calls. Night
+   adds windows, pools, 3 sign meshes, steam 1. Procedural fallback trades the
+   3 bakes for ~7 calls. */
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+
+const REDUCED = window.matchMedia
+  && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const HCAP = 4.3;         // interior blocks are height-capped: chase cam (+4.6) clears
 const SLAB_TOP = 0.16;    // sidewalk slab height
@@ -52,6 +57,28 @@ function concreteCanvas(rng) {
   const ctx = cv.getContext("2d");
   ctx.fillStyle = "#98948a"; ctx.fillRect(0, 0, 256, 256); // warm concrete, not blinding
   speckle(ctx, rng, 256, 700, "rgba(88,86,78,0.28)", "rgba(186,182,172,0.30)");
+  // V3: subtle paver grid — fixed spacing, no rng (the plan stream is sacred)
+  ctx.fillStyle = "rgba(70,68,62,0.16)";
+  for (let k = 32; k < 256; k += 32) { ctx.fillRect(k, 0, 1, 256); ctx.fillRect(0, k, 256, 1); }
+  ctx.fillStyle = "rgba(60,58,52,0.2)";
+  ctx.fillRect(128, 0, 1, 256); ctx.fillRect(0, 128, 256, 1);
+  return cv;
+}
+
+/* bright-biased noise for roughnessMap jitter (green channel is what counts):
+   average ≈ 0.85 so materials keep their base feel, speckled ±0.12 */
+function roughNoiseCanvas() {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#d9d9d9"; ctx.fillRect(0, 0, 128, 128);
+  let s = 770079 >>> 0; // tiny local LCG — NOT the plan stream
+  const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = 0; i < 420; i += 1) {
+    const w = 1 + r() * 3;
+    ctx.fillStyle = r() < 0.5 ? "rgba(178,178,178,0.5)" : "rgba(238,238,238,0.5)";
+    ctx.fillRect(r() * 128, r() * 128, w, w * (0.5 + r()));
+  }
   return cv;
 }
 
@@ -151,8 +178,10 @@ function towerCanvas() {
 
 /* the whole ground-marking layer, painted once: asphalt grain + white dashed
    center lines + solid edge lines + stop lines + zebra crosswalks at every
-   intersection. One 68×68-world-unit plane, one draw call. */
-function roadCanvas(rng, roads) {
+   intersection. V3 adds WEAR from the detail stream (rng2): faded crosswalk
+   stripes, manhole covers, oil stains — all in this one canvas, zero extra
+   draw calls. One 68×68-world-unit plane, one draw call. */
+function roadCanvas(rng, roads, rng2) {
   const PX = 1536, W = 68, S = PX / W;
   const u = (v) => (v + W / 2) * S;
   const cv = document.createElement("canvas");
@@ -195,12 +224,59 @@ function roadCanvas(rng, roads) {
       rect(cx + 3.22, cz - 1.9, 0.26, 3.8); rect(cx - 3.48, cz - 1.9, 0.26, 3.8);
     }
   }
+
+  /* ------------------------- V3 wear (detail stream) ---------------------- */
+  // crosswalk fade variation: some approaches half-erased back to grain
+  for (const cx of roads) {
+    for (const cz of roads) {
+      const zones = [
+        [cx - 1.75, cz + 2.15, 3.85, 0.95], [cx - 1.75, cz - 3.1, 3.85, 0.95],
+        [cx + 2.15, cz - 1.75, 0.95, 3.85], [cx - 3.1, cz - 1.75, 0.95, 3.85],
+      ];
+      for (const [zx, zz, zw, zh] of zones) {
+        if (rng2() < 0.45) {
+          ctx.globalAlpha = 0.22 + rng2() * 0.34;
+          ctx.drawImage(base, u(zx), u(zz), zw * S, zh * S, u(zx), u(zz), zw * S, zh * S);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+  // manhole covers: dark disc + rim + pick-slots, offset into the lanes
+  for (const cx of roads) {
+    for (const cz of roads) {
+      if (rng2() >= 0.4) continue;
+      const mx = u(cx + (rng2() < 0.5 ? -1.15 : 1.15));
+      const mz = u(cz + (rng2() < 0.5 ? -1.15 : 1.15));
+      const mr = 0.42 * S;
+      ctx.fillStyle = "#54565a";
+      ctx.beginPath(); ctx.arc(mx, mz, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(30,32,35,0.85)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(mx, mz, mr, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(38,40,44,0.7)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx, mz, mr * 0.62, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx - mr * 0.4, mz); ctx.lineTo(mx + mr * 0.4, mz); ctx.stroke();
+    }
+  }
+  // oil stains: soft dark blobs strung along the road lanes
+  for (let i = 0; i < 26; i += 1) {
+    const along = (rng2() * 2 - 1) * 31;
+    const lane = roads[Math.floor(rng2() * roads.length)] + (rng2() < 0.5 ? -1.0 : 1.0);
+    const [ox, oz] = rng2() < 0.5 ? [along, lane] : [lane, along];
+    const orad = (0.5 + rng2() * 0.9) * S;
+    const g2 = ctx.createRadialGradient(u(ox), u(oz), orad * 0.1, u(ox), u(oz), orad);
+    g2.addColorStop(0, "rgba(22,22,26," + (0.22 + rng2() * 0.16).toFixed(2) + ")");
+    g2.addColorStop(1, "rgba(22,22,26,0)");
+    ctx.fillStyle = g2;
+    ctx.fillRect(u(ox) - orad, u(oz) - orad, orad * 2, orad * 2);
+  }
   return cv;
 }
 
 /* ================================ WORLD ================================= */
 
-export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellToWorld }) {
+export function createWorld({ scene, tier, rng, rngDetail = null, maxAniso = 4, CELL, GRID, cellToWorld }) {
+  const rng2 = rngDetail || (() => 0.5); // detail stream (V3 dressing only)
   const HALF = (GRID - 1) / 2;
   const roads = [];
   for (let i = 0; i < GRID; i += 1) roads.push((i - HALF) * CELL);
@@ -218,8 +294,9 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
     return t;
   };
 
-  /* ---------- textures (rng order fixed: road, concrete, grass) ---------- */
-  const roadTex = tex(roadCanvas(rng, roads), true);
+  /* ---------- textures (rng order fixed: road, concrete, grass;
+                the rng2 detail stream starts inside roadCanvas) ---------- */
+  const roadTex = tex(roadCanvas(rng, roads, rng2), true);
   const concreteCv = concreteCanvas(rng);
   const concreteTex = tex(concreteCv, true);
   const grassTex = tex(grassCanvas(rng));
@@ -228,6 +305,7 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
   const glowTex = new THREE.CanvasTexture(glowCanvas());
   const facadeTex = tex(facadeCanvas());
   const towerTex = tex(towerCanvas());
+  const roughTex = new THREE.CanvasTexture(roughNoiseCanvas()); // linear (non-color) data
 
   /* ------------------------------- the PLAN ------------------------------ */
   const plan = { blocks: [], towers: [], corners: [], posts: [], hydrants: [], spots: [] };
@@ -448,7 +526,8 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
   {
     const builds = [];
     for (const b of plan.blocks) if (b.type === "build") for (const bd of b.buildings) builds.push(bd);
-    const facadeMat = new THREE.MeshStandardMaterial({ map: facadeTex, roughness: 0.85 });
+    // V3: roughnessMap noise (bright-biased, avg ≈ .85) — facade sheen varies
+    const facadeMat = new THREE.MeshStandardMaterial({ map: facadeTex, roughness: 1.0, roughnessMap: roughTex });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0xb2ada2, roughness: 0.95 });
     presetMats.push({ mat: facadeMat, day: 0xffffff, night: 0x6a7080 });
     presetMats.push({ mat: roofMat, day: 0xb2ada2, night: 0x3f4452 });
@@ -493,7 +572,8 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
   /* --- outer skyline (procedural; kenney bake replaces to the SAME boxes) --- */
   let towersMesh;
   {
-    const sideMat = new THREE.MeshStandardMaterial({ map: towerTex, roughness: 0.85, emissive: 0x000000, emissiveIntensity: 0.7 });
+    // V3: glass bands slightly reflective — lower roughness + env cubemap glints
+    const sideMat = new THREE.MeshStandardMaterial({ map: towerTex, roughness: 0.6, emissive: 0x000000, emissiveIntensity: 0.7 });
     const topMat = new THREE.MeshStandardMaterial({ color: 0x8f8b82, roughness: 0.95, emissive: 0x000000, emissiveIntensity: 0.7 });
     presetMats.push({ mat: sideMat, day: 0xffffff, night: 0x39404f, emissiveNight: 0x10162a });
     presetMats.push({ mat: topMat, day: 0x8f8b82, night: 0x2a2f3c, emissiveNight: 0x0a0e1c });
@@ -596,6 +676,118 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
     if (signsStatic) scene.add(signsStatic);
   }
 
+  /* --- V3 billboards: 3 ring towers carry NEUTRAL FICTIONAL ads (canvas
+         atlas, one merged mesh = one draw call, day and night) --- */
+  {
+    const cv = document.createElement("canvas");
+    cv.width = 768; cv.height = 256;
+    const bctx = cv.getContext("2d");
+    const frame = (x) => { bctx.strokeStyle = "#14161c"; bctx.lineWidth = 14; bctx.strokeRect(x + 7, 7, 242, 242); };
+    // panel 0: COSMOS COLA
+    bctx.fillStyle = "#b81a2e"; bctx.fillRect(0, 0, 256, 256);
+    bctx.fillStyle = "#f4f1e6";
+    bctx.font = "700 44px 'Chakra Petch', sans-serif"; bctx.textAlign = "center";
+    bctx.fillText("COSMOS", 128, 108);
+    bctx.fillText("COLA", 128, 158);
+    bctx.strokeStyle = "#f4f1e6"; bctx.lineWidth = 7;
+    bctx.beginPath(); bctx.moveTo(40, 190); bctx.quadraticCurveTo(128, 232, 216, 184); bctx.stroke();
+    bctx.font = "700 18px 'Space Mono', monospace"; bctx.fillText("ICE COLD SINCE 2077", 128, 62);
+    frame(0);
+    // panel 1: 77 FM
+    bctx.fillStyle = "#101f4e"; bctx.fillRect(256, 0, 256, 256);
+    bctx.fillStyle = "#ffd400";
+    bctx.font = "700 96px 'Chakra Petch', sans-serif";
+    bctx.fillText("77", 384, 130);
+    bctx.font = "700 44px 'Chakra Petch', sans-serif"; bctx.fillText("FM", 384, 180);
+    bctx.fillStyle = "#e8eaf0"; bctx.font = "700 17px 'Space Mono', monospace";
+    bctx.fillText("ALL-NIGHT PURSUIT RADIO", 384, 218);
+    frame(256);
+    // panel 2: NY DONUTS
+    bctx.fillStyle = "#26101e"; bctx.fillRect(512, 0, 256, 256);
+    bctx.strokeStyle = "#ff2e88"; bctx.lineWidth = 22;
+    bctx.beginPath(); bctx.arc(640, 104, 52, 0, Math.PI * 2); bctx.stroke();
+    bctx.fillStyle = "#ffd9ec"; bctx.font = "700 40px 'Chakra Petch', sans-serif";
+    bctx.fillText("NY DONUTS", 640, 204);
+    bctx.fillStyle = "#ff8ab8"; bctx.font = "700 16px 'Space Mono', monospace";
+    bctx.fillText("HOT · GLAZED · 24H", 640, 234);
+    frame(512);
+    const billTex = tex(cv, true);
+    const candidates = plan.towers.filter((t) => t.band === "near" && t.h >= 9);
+    const geos = [];
+    const used = new Set();
+    for (let k = 0; k < 3 && candidates.length; k += 1) {
+      let idx = Math.floor(rng2() * candidates.length);
+      let guard = 0;
+      while (used.has(idx) && guard < candidates.length) { idx = (idx + 1) % candidates.length; guard += 1; }
+      used.add(idx);
+      const t = candidates[idx];
+      const w = Math.min(5.6, Math.max(3.6, t.w * 0.92));
+      const g = new THREE.PlaneGeometry(w, w);
+      const uvs = g.attributes.uv;
+      for (let vI = 0; vI < uvs.count; vI += 1) uvs.setX(vI, (k + uvs.getX(vI)) / 3);
+      const px = Math.abs(t.x) > Math.abs(t.z);
+      const sign = px ? Math.sign(t.x) : Math.sign(t.z);
+      const y = Math.min(t.h - w / 2 - 0.5, 5.5 + rng2() * 4);
+      if (px) {
+        tmpQ.setFromAxisAngle(UP, sign > 0 ? -Math.PI / 2 : Math.PI / 2);
+        tmpM.compose(tmpV.set(t.x - sign * (t.w / 2 + 0.12), y, t.z), tmpQ, tmpS.set(1, 1, 1));
+      } else {
+        tmpQ.setFromAxisAngle(UP, sign > 0 ? Math.PI : 0);
+        tmpM.compose(tmpV.set(t.x, y, t.z - sign * (t.d / 2 + 0.12)), tmpQ, tmpS.set(1, 1, 1));
+      }
+      g.applyMatrix4(tmpM);
+      geos.push(g);
+    }
+    if (geos.length) {
+      const bill = track(new THREE.Mesh(
+        mergeGeometries(geos),
+        new THREE.MeshBasicMaterial({ map: billTex, side: THREE.DoubleSide }),
+      ));
+      scene.add(bill); // basic material: printed board by day, backlit at night
+    }
+  }
+
+  /* --- V3 steam vents: 3 vents × 3 additive puffs, night only, cheap ---
+         (one InstancedMesh = one draw call; hidden under reduced motion) --- */
+  let steam = null;
+  const steamSeeds = [];
+  {
+    const scv = document.createElement("canvas");
+    scv.width = scv.height = 64;
+    const sctx = scv.getContext("2d");
+    const sg = sctx.createRadialGradient(32, 32, 3, 32, 32, 31);
+    sg.addColorStop(0, "rgba(210,220,235,0.7)");
+    sg.addColorStop(0.55, "rgba(190,200,220,0.25)");
+    sg.addColorStop(1, "rgba(180,190,210,0)");
+    sctx.fillStyle = sg; sctx.fillRect(0, 0, 64, 64);
+    const builds = plan.blocks.filter((b) => b.type === "build");
+    for (let k = 0; k < 3 && builds.length; k += 1) {
+      const b = builds[Math.floor(rng2() * builds.length)];
+      const vx = b.cx + (rng2() < 0.5 ? -2.45 : 2.45);
+      const vz = b.cz + (rng2() < 0.5 ? -2.45 : 2.45);
+      const yaw = rng2() * Math.PI;
+      for (let p = 0; p < 3; p += 1) steamSeeds.push({ x: vx, z: vz, yaw, phase: (k * 3 + p) * 0.31 + rng2() * 0.2 });
+    }
+    if (steamSeeds.length) {
+      steam = track(new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(1.5, 1.5),
+        new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(scv), transparent: true, depthWrite: false,
+          blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide,
+        }),
+        steamSeeds.length,
+      ));
+      for (let i = 0; i < steamSeeds.length; i += 1) {
+        tmpM.compose(tmpV.set(0, -50, 0), tmpQ.identity(), tmpS.set(1, 1, 1));
+        steam.setMatrixAt(i, tmpM);
+        steam.setColorAt(i, tmpC.set(0x000000));
+      }
+      steam.instanceMatrix.needsUpdate = true;
+      steam.visible = false; // night preset only; never under reduced motion
+      scene.add(steam);
+    }
+  }
+
   /* ------------------------------ street props --------------------------- */
   let heads, pools;
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x6a6f76, roughness: 0.6, metalness: 0.4 });
@@ -686,15 +878,22 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
   }
 
   /* ------------------------------ kenney bake ----------------------------- */
+  /* V3: tint is a THREE.Color multiplier — per-instance hue/brightness jitter
+     baked as vertex colors (the "varied palette hues" fidelity pass). */
+  const bakeTint = new THREE.Color();
   function bakeOne(src, tint, matrix) {
     const g = src.clone();
     const n = g.attributes.position.count;
     const colors = new Float32Array(n * 3);
-    for (let v = 0; v < n; v += 1) { colors[v * 3] = tint; colors[v * 3 + 1] = tint; colors[v * 3 + 2] = tint; }
+    for (let v = 0; v < n; v += 1) tint.toArray(colors, v * 3);
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.applyMatrix4(matrix);
     return g;
   }
+
+  /* curated multiplier tints for the parked-car bake (palette stays kenney's;
+     the multiply shifts paint families: warm/cool/mint/rose/neutral/gray) */
+  const PARKED_TINTS = [0xffffff, 0xffd9c0, 0xc9d8ff, 0xd8ffd0, 0xffc9c9, 0xbfbfbf];
 
   function swapIn(geos, material, removeList) {
     if (!geos.length) return null;
@@ -712,6 +911,9 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
     if (!assets) return;
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
     if (assets.bakeMaterial) {
+      assets.bakeMaterial.roughness = 1.0;          // V3: per-texel roughness jitter
+      assets.bakeMaterial.roughnessMap = roughTex;  // (avg ≈ .85, speckled)
+      assets.bakeMaterial.needsUpdate = true;
       presetMats.push({ mat: assets.bakeMaterial, day: 0xffffff, night: 0x8a91a6 });
       if (assets.interior.length) { // detailed low-rises INSIDE the board
         const geos = [];
@@ -722,7 +924,9 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
             const s = Math.min(bd.w / t.size.x, bd.d / t.size.z, HCAP / t.size.y);
             q.setFromAxisAngle(UP, bd.yaw);
             m4.compose(v.set(bd.x, SLAB_TOP, bd.z), q, sc.set(s, s, s));
-            geos.push(bakeOne(t.geometry, 0.88 + bd.tintRoll * 0.18, m4));
+            // warm hue jitter: plaster drifts cream→tan, brightness ±9%
+            bakeTint.setHSL(0.06 + bd.typeRoll * 0.06, 0.10 + bd.tintRoll * 0.14, 0.66 + bd.tintRoll * 0.09);
+            geos.push(bakeOne(t.geometry, bakeTint, m4));
           }
         }
         const mesh = swapIn(geos, assets.bakeMaterial, interiorMeshes);
@@ -737,7 +941,9 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
           if (!pick.length) continue;
           const md = pick[Math.floor(t.typeRoll * pick.length)];
           m4.compose(v.set(t.x, 0, t.z), q, sc.set(t.w / md.size.x, t.h / md.size.y, t.d / md.size.z));
-          geos.push(bakeOne(md.geometry, 0.82 + t.hue * 0.24, m4));
+          // same hue family as the procedural ring, per-tower variation
+          bakeTint.setHSL(0.08 + t.hue * 0.06, 0.12, 0.58 + t.hue * 0.18);
+          geos.push(bakeOne(md.geometry, bakeTint, m4));
         }
         const mesh = swapIn(geos, assets.bakeMaterial, [towersMesh]);
         if (mesh) towersMesh = mesh;
@@ -751,7 +957,10 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
         const k = 3.9 / md.size.z;
         q.setFromAxisAngle(UP, s.yaw);
         m4.compose(v.set(s.x, s.y, s.z), q, sc.set(k, k, k));
-        geos.push(bakeOne(md.geometry, 0.8 + s.tintRoll * 0.25, m4));
+        // varied kenney palette hues: curated tint family × brightness jitter
+        bakeTint.set(PARKED_TINTS[Math.floor(s.tintRoll * PARKED_TINTS.length)])
+          .multiplyScalar(0.82 + (s.tintRoll * 7.3 % 1) * 0.26);
+        geos.push(bakeOne(md.geometry, bakeTint, m4));
       }
       const mesh = swapIn(geos, assets.bakeCarMaterial, [parkedMesh]);
       if (mesh) parkedMesh = mesh;
@@ -767,6 +976,7 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
     windows.visible = night;
     pools.visible = night;
     if (signsStatic) signsStatic.visible = night;
+    if (steam) steam.visible = night && !REDUCED; // V3: steam is a night thing
     for (const f of flickers) f.visible = night;
     for (const e of presetMats) {
       e.mat.color.set(night ? e.night : e.day);
@@ -777,11 +987,29 @@ export function createWorld({ scene, tier, rng, maxAniso = 4, CELL, GRID, cellTo
     groundMat.roughness = night ? 0.35 : 0.95;
   }
 
+  const STEAM_CYCLE = 2.6;
   function update(dt, elapsed) {
     if (preset !== "night") return;
     for (const s of flickers) {
       const on = (Math.sin(elapsed * 9 + s.userData.seed) + Math.sin(elapsed * 23.7 + s.userData.seed * 2)) > -0.6;
       s.material.color.copy(s.userData.base).multiplyScalar(on ? 1 : 0.12);
+    }
+    if (steam && steam.visible) { // rising, fading puffs (9 instances)
+      for (let i = 0; i < steamSeeds.length; i += 1) {
+        const sd = steamSeeds[i];
+        const c = (elapsed / STEAM_CYCLE + sd.phase) % 1;
+        const a = Math.min(1, c / 0.12) * (1 - c) * 0.5;
+        tmpQ.setFromAxisAngle(UP, sd.yaw);
+        tmpM.compose(
+          tmpV.set(sd.x, 0.3 + c * 2.1, sd.z),
+          tmpQ,
+          tmpS.setScalar(0.6 + c * 1.5),
+        );
+        steam.setMatrixAt(i, tmpM);
+        steam.setColorAt(i, tmpC.setScalar(a));
+      }
+      steam.instanceMatrix.needsUpdate = true;
+      steam.instanceColor.needsUpdate = true;
     }
     void dt;
   }

@@ -1,20 +1,21 @@
-/* replay.js — the REPLAY CINEMA (ARENA V2). Settled games only: bird's-eye is
+/* replay.js — the REPLAY CINEMA (ARENA V3). Settled games only: bird's-eye is
    LEGAL here (positions are mutually revealed by the audit protocol) and only
    here. Loads GET /api/replays/{run_id} — or the demo fixture with ?demo=1 —
    and drives the same scene/world/vehicles stack as the live arena: both
    vehicles on TRUE paths (with headings, so CHASE works), barriers as they
    landed, per-step Verified OK / TAMPERED badge, window selector, 0.5/1/4/16x
-   scrubber, BELIEF vs TRUTH overlay. V2 adds: TOP / CHASE COP / CHASE THIEF
-   cameras, DAY/NIGHT preset, scent overlay defaulting OFF, and the "▶ ENDING"
-   chip (seeks to 3 frames before the window end, plays at 1x).
+   scrubber, BELIEF vs TRUTH overlay. V3: full-bleed world, floating glass
+   chrome (scrubber bar + collapsible right panels), the shared ESC menu,
+   the fresnel/scanline BELIEF hologram, and a chase FOV kick on play.
    Playback clock is a speed-multiplied accumulator — never wall-clock. */
 
 import * as THREE from "three";
 import { createArena, qualityFromQuery, cellToWorld } from "./scene.js";
-import { createScentLayer, createBarrierPool, makeLabelSprite, REDUCED } from "./entities.js";
+import { createScentLayer, createBarrierPool, makeLabelSprite, holoMaterial, REDUCED } from "./entities.js";
 import { createCruiser, createRunner } from "./vehicles.js";
 import { loadKenneyAssets } from "./assets.js";
 import { gridFromMap } from "./timeline.js";
+import { initMenu, wireCollapse } from "./menu.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -47,15 +48,13 @@ loadKenneyAssets().then((assets) => {
   if (assets.cone && assets.cone.material) barriers.attachCones(assets.cone.geometry, assets.cone.material);
 });
 
-/* the replay ghost marker: volume + rim shell + ground ring + BELIEF label */
-const ghostMarker = new THREE.Mesh(
-  new THREE.BoxGeometry(6.0, 2.6, 6.0),
-  new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+/* the replay ghost marker — V3 fresnel/scanline hologram + ring + label */
+const ghostHoloMat = holoMaterial(0x7ad7ff);
+const ghostHolo = new THREE.Mesh(
+  new THREE.CylinderGeometry(3.05, 3.05, 2.9, 28, 1, true),
+  ghostHoloMat,
 );
-const ghostShell = new THREE.Mesh(
-  new THREE.BoxGeometry(6.5, 2.9, 6.5),
-  new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.2, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
-);
+ghostHolo.position.y = 1.47;
 const ghostRing = new THREE.Mesh(
   new THREE.RingGeometry(3.0, 3.9, 40),
   new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
@@ -65,9 +64,7 @@ ghostRing.position.y = 0.42;
 const ghostLabel = makeLabelSprite("BELIEF", "#7ad7ff");
 ghostLabel.center.set(0.5, 0);
 const ghostGroup = new THREE.Group();
-ghostGroup.add(ghostMarker, ghostShell, ghostRing, ghostLabel);
-ghostMarker.position.y = 1.3;
-ghostShell.position.y = 1.45;
+ghostGroup.add(ghostHolo, ghostRing, ghostLabel);
 ghostLabel.position.y = 4.6;
 arena.scene.add(ghostGroup);
 
@@ -78,8 +75,8 @@ function applyPreset(p) {
   cruiser.setPreset(preset);
   runner.setPreset(preset);
   const day = preset === "day";
-  ghostMarker.material.opacity = day ? 0.3 : 0.2;
-  ghostShell.material.opacity = day ? 0.3 : 0.2;
+  ghostHoloMat.uniforms.uBase.value = day ? 0.14 : 0.08;
+  ghostHoloMat.uniforms.uRim.value = day ? 0.62 : 0.42;
   ghostRing.material.opacity = day ? 0.55 : 0.4;
   try { localStorage.setItem(PRESET_KEY, preset); } catch (_e) { /* private mode */ }
   document.querySelectorAll("#dnSeg button").forEach((b) => {
@@ -246,6 +243,7 @@ function setSpeed(x) {
 $("btnPlay").addEventListener("click", () => {
   playing = !playing;
   if (playing && k >= winHi) seek(winLo);
+  if (playing) arena.cameras.kick(); // V3: chase FOV kick as motion starts
   $("btnPlay").textContent = playing ? "❚❚ PAUSE" : "▶ PLAY";
 });
 $("scrub").addEventListener("input", (e) => { playing = false; $("btnPlay").textContent = "▶ PLAY"; seek(Number(e.target.value)); });
@@ -296,6 +294,8 @@ document.querySelectorAll("#dnSeg button").forEach((b) => {
 
 arena.cameras.setChaseTarget(cruiser.group);
 applyPreset(preset);
+initMenu({ page: "replay" });
+wireCollapse(document);
 
 /* ------------------------------------------------------------------ loop */
 function frame() {
@@ -319,9 +319,12 @@ function frame() {
   runner.update(dt, timer.getElapsed());
   scent.update(dt);
   barriers.update(Math.max(dt, rawDt));
-  if (ghostGroup.visible && !REDUCED) {
-    const p = 0.92 + 0.1 * Math.sin(timer.getElapsed() * 5);
-    ghostGroup.scale.set(p, 1, p);
+  if (ghostGroup.visible) {
+    ghostHoloMat.uniforms.uTime.value = REDUCED ? 0 : timer.getElapsed();
+    if (!REDUCED) {
+      const p = 0.92 + 0.1 * Math.sin(timer.getElapsed() * 5);
+      ghostGroup.scale.set(p, 1, p);
+    }
   }
   arena.cameras.update(rawDt, null);
   arena.render(rawDt);
@@ -368,6 +371,6 @@ fetch(DOC_URL, { headers: { Accept: "application/json" } })
   })
   .catch((e) => {
     $("metaPill").textContent = "replay unavailable — " + e.message + (runId ? "" : " (no run id; try ?demo=1)");
-    $("metaPill").className = "pill warn";
+    $("metaPill").className = "chip-sub mono warn";
     frame();
   });
