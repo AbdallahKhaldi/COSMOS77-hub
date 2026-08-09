@@ -15,7 +15,7 @@ import { REDUCED } from "./entities.js";
 import { applyEvent, initialState, gridFromMap } from "./timeline.js";
 import { drainDecision, INSTANT_CAP } from "./pacing.js";
 
-const MOVE_MS = 450;
+const MOVE_MS = 620;   // a followable drive, not a dart
 
 function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2; }
 
@@ -122,7 +122,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
           rig.vehicle.group.position.copy(to); // first placement / STAY
         }
       }
-      rig.barriers.sync(p.barriers);
+      rig.barriers.sync(p.barriers, p.self_pos);
       rig.ghost.setPosterior(gridFromMap(p.posterior), p.confidence || "none");
       rig.scent.setTargets(gridFromMap(p.perceived_scent));
       paintOverlay(next);
@@ -135,7 +135,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
       const v = next.view;
       if (v && Array.isArray(v.self_pos)) {
         rig.vehicle.group.position.copy(cellToWorld(v.self_pos[0], v.self_pos[1], 0));
-        rig.barriers.sync(v.barriers);
+        rig.barriers.sync(v.barriers, v.self_pos);
         rig.ghost.setPosterior(gridFromMap(v.posterior), v.confidence || "none");
         rig.scent.setTargets(gridFromMap(v.perceived_scent));
       }

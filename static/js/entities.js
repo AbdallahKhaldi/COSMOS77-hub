@@ -354,9 +354,24 @@ export function createBarrierPool() {
       cones.instanceMatrix.needsUpdate = true;
       mesh.add(cones); // barricade pool sits at the origin, so local == world
     },
-    /* authoritative list of [r,c]; new keys animate a drop */
-    sync(list) {
+    /* authoritative list of [r,c]; new keys animate a drop.
+       *occupied* is our own cell: a cop may legally drop a roadblock on the cell
+       it is standing on, so that barricade is HELD in the air until the car pulls
+       away — otherwise the car renders inside the barricade and looks like it
+       drove through it. */
+    sync(list, occupied) {
       const want = new Set((list || []).map(([r, c]) => r + "," + c));
+      const here = occupied ? occupied[0] + "," + occupied[1] : null;
+      for (const s of slots) {
+        if (!s) continue;
+        if (s.key === here) {
+          s.held = true;                       // our car is standing on it
+        } else if (s.held) {
+          s.held = false;                      // it pulled away — drop the barricade
+          s.y = Math.max(s.y, 4);
+          s.vy = 0;
+        }
+      }
       for (let i = 0; i < MAXB; i += 1) {
         if (slots[i] && !want.has(slots[i].key)) slots[i] = null;
         if (slots[i]) want.delete(slots[i].key);
@@ -366,7 +381,8 @@ export function createBarrierPool() {
         if (idx === -1) break;
         const j = key.indexOf(",");
         const r = parseInt(key.slice(0, j), 10), c = parseInt(key.slice(j + 1), 10);
-        slots[idx] = { key, r, c, y: REDUCED ? 0 : 22, vy: 0, q: yawQ[(r + c) % 2] };
+        slots[idx] = { key, r, c, y: REDUCED ? 0 : 22, vy: 0, q: yawQ[(r + c) % 2],
+                       held: here !== null && key === here };
       }
     },
     reset() { for (let i = 0; i < MAXB; i += 1) slots[i] = null; },
@@ -379,7 +395,12 @@ export function createBarrierPool() {
           continue;
         }
         hidden[i] = false;
-        if (s.y > 0) {
+        if (s.held) {                    // hover above our own car until it leaves
+          const p = cellToWorld(s.r, s.c, 0);
+          writeSlot(i, p.x, 4.2, p.z, s.q);
+          s.landed = false;
+          dirty = true;
+        } else if (s.y > 0) {
           s.vy += 60 * dt;
           s.y = Math.max(0, s.y - s.vy * dt);
           const p = cellToWorld(s.r, s.c, s.y);

@@ -11,7 +11,7 @@ import secrets
 
 from .runspec import RunSpec
 
-SPECTATOR_DWELL_MS = 240  # per view; a window then unfolds over ~35s, watchable live
+SPECTATOR_DWELL_MS = 700  # per view: roughly one followable move per second
 
 
 def run_seed(spec: RunSpec) -> int | None:

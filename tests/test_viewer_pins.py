@@ -1,4 +1,4 @@
-"""The viewer's drain policy is JS; run its node suite from the python gate."""
+"""The viewer's trickiest rules are JS; run their node suites from the python gate."""
 
 from __future__ import annotations
 
@@ -9,15 +9,19 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SUITE = REPO / "tests" / "viewer" / "pacing.test.mjs"
+SUITES = {
+    "pacing.test.mjs": "ALL 9 PACING PINS HOLD",
+    "barricade.test.mjs": "ALL 4 BARRICADE PINS HOLD",
+}
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_viewer_pacing_pins_hold() -> None:
-    """Feed-switch fast-forward, the paced beat, and burst tiers stay pinned."""
+@pytest.mark.parametrize(("suite", "banner"), sorted(SUITES.items()))
+def test_viewer_pins_hold(suite: str, banner: str) -> None:
+    """Drain policy (switch / beat / burst) and the own-cell barricade rule."""
     result = subprocess.run(
-        [shutil.which("node") or "node", str(SUITE)],
+        [shutil.which("node") or "node", str(REPO / "tests" / "viewer" / suite)],
         capture_output=True, text=True, timeout=60, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "ALL 9 PACING PINS HOLD" in result.stdout
+    assert banner in result.stdout
