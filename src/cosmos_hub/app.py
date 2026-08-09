@@ -84,6 +84,20 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
         app.include_router(router)
     if settings.static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
+
+    @app.middleware("http")
+    async def _freshness(request, call_next):  # noqa: ANN001, ANN202
+        """Pages and app JS/CSS must revalidate every load (a stale client silently
+        undoes server fixes); versioned vendor dirs stay long-cached.
+        """
+        response = await call_next(request)
+        path = request.url.path
+        app_asset = (path.startswith(("/static/js/", "/static/css/", "/static/fixtures/"))
+                     or response.headers.get("content-type", "").startswith("text/html"))
+        if app_asset and not path.startswith("/static/vendor/"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
     return app
 
 
