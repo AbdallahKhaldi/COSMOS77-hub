@@ -297,14 +297,17 @@ function startDemo() {
         : "// LIVE — fresh pursuit " + res.run_id + " (different game every press)");
     })
     .catch(function (e) {
-      var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "lane busy";
+      var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "engine busy";
       if (director.mode === "live") {
-        hud.sysLine("// pursuit still playing — " + why + " before the next fresh game");
-        return; // never yank a live game off the screen for a tape
+        hud.sysLine("// pursuit still playing — " + why);
+        return; // never interrupt a live game
       }
-      if (hud.showSlam) hud.showSlam("RECORDED TAPE", "tape", "live lane cooling down — " + why);
-      hud.sysLine("// ⚠ RECORDED TAPE (not live): " + why + " — press again shortly for a fresh game");
-      startTape();
+      // NO TAPE, EVER: single player is a real game or an honest countdown.
+      var m = /in (\d+)s/.exec(why);
+      var wait = m ? Math.min(30, parseInt(m[1], 10) + 1) : 6;
+      hud.sysLine("// engine cooling down — fresh REAL pursuit in " + wait + "s (auto-retry)");
+      clearTimeout(window.__demoRetry);
+      window.__demoRetry = setTimeout(startDemo, wait * 1000);
     });
 }
 

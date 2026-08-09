@@ -223,12 +223,14 @@ export class Timeline {
   /* Returns true if the envelope was accepted (appended). */
   push(env) {
     if (!env || typeof env.seq !== "number") return false;
-    if (env.run_id && this.runId && env.run_id !== this.runId) {
-      // a new run started — the old log is a different game
+    // Only a DIFFERENT GAME resets the log. "standing" is the hub's idle posture —
+    // its statuses arrive right after a fast run ends and must never wipe a tape
+    // the viewer is still watching.
+    if (env.run_id && env.run_id !== "standing" && this.runId && env.run_id !== this.runId) {
       this.events = [];
       this.lastSeq = 0;
     }
-    if (env.run_id) this.runId = env.run_id;
+    if (env.run_id && env.run_id !== "standing") this.runId = env.run_id;
     if (env.seq <= this.lastSeq) return false;      // dedupe / replayed frame
     this.lastSeq = env.seq;                          // gaps are normal (per-perspective stream)
     this.events.push(env);

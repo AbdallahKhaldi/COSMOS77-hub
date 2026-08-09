@@ -76,7 +76,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     app.state.hub = hub
     app.state.manager = Manager(settings, notify=hub.notify)
     app.state.challenge_gate = challenge.ChallengeGate()
-    app.state.demo_gate = challenge.ChallengeGate(cooldown_s=20, daily=200)  # cheap selfplays
+    app.state.demo_gate = challenge.ChallengeGate(cooldown_s=8, daily=500)  # cheap selfplays
     app.state.challenge_resolver = challenge.default_resolver
     app.state.proxy_client = proxy.make_client()  # closed by the lifespan teardown
     for router in (pages.router, proxy.router, challenge.router, doctor.router, demo.router,

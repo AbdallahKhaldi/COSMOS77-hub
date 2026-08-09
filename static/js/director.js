@@ -153,11 +153,6 @@ export function createDirector({ arena, timeline, hud, rig }) {
 
   function applyNext() {
     const env = timeline.events[cursor];
-    if (paceMs > 0 && env && env.type === "view") {
-      const now = timer.getElapsed() * 1000;
-      if (now - lastViewAt < paceMs) return; // hold the tape — the game unfolds at watchable speed
-      lastViewAt = now;
-    }
     cursor += 1;
     const prev = state;
     state = applyEvent(state, env);
@@ -206,6 +201,13 @@ export function createDirector({ arena, timeline, hud, rig }) {
     // tween tiers start the next event only when the previous tween is done.
     let guard = 0;
     while (backlog() > 0 && guard < INSTANT_CAP) {
+      const pending = timeline.events[cursor];
+      if (paceMs > 0 && pending && pending.type === "view") {
+        const nowMs = timer.getElapsed() * 1000;
+        if (nowMs - lastViewAt < paceMs) break; // wait for the beat — never spin
+        lastViewAt = nowMs;
+        applyNext(); guard += 1; continue;
+      }
       if (backlog() > 12) { applyNext(); guard += 1; continue; }
       if (tweens.length === 0) { applyNext(); guard += 1; continue; }
       break;
