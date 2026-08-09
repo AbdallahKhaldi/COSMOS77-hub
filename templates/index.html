@@ -342,6 +342,20 @@ function switchPerspective(p) {
   openSocket();                     // re-opens the feed as the other local truth
 }
 
+/* ?debug=1 exposes the live objects for diagnosis (draw-call ledger, feed state,
+   switch behaviour). Read-only introspection; absent without the flag. */
+if (new URLSearchParams(location.search).has("debug")) {
+  window.__cosmos = {
+    get step() { const v = director.state && director.state.view; return v ? v.step : null; },
+    get subGame() { const v = director.state && director.state.view; return v ? v.sub_game : null; },
+    get selfPos() { const v = director.state && director.state.view; return v ? v.self_pos : null; },
+    get mode() { return director.mode; },
+    get perspective() { return perspective; },
+    get backlog() { return timeline.events.length; },
+    switchTo(p) { switchPerspective(p); },
+  };
+}
+
 hud.wireChrome();
 hud.setSource(source);
 hud.setMode("attract");
