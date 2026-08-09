@@ -290,7 +290,9 @@ function startDemo() {
       if (!res.joined) director.reset(perspective, "attract");
       source = "live";
       hud.setSource("live");
-      director.setPace(650); // a real selfplay finishes in seconds — unfold it watchably
+      // the hub now paces spectator runs at the source, so the browser must NOT
+      // add a second beat on top (that is what turned live play into a broadcast)
+      director.setPace(res.server_paced ? 0 : 650);
       openSocket(); // the live feed streams the run (snapshot catches us up if joining)
       hud.sysLine(res.joined
         ? "// JOINED — a live pursuit is already in progress (" + res.run_id + ")"
@@ -335,7 +337,9 @@ function switchPerspective(p) {
   rig.vehicle = vehicleFor(p);      // CHASE lands behind the newly selected car
   hud.setPerspectiveChrome(p);
   director.reset(p, wasLive ? "live" : "attract"); // clears the shared timeline too
-  if (wasLive && moment) director.fastForwardTo(moment);
+  // Never replay a game from its opening on a feed switch: hold the moment being
+  // watched, or — when a run has already finished — fast-forward straight to the end.
+  director.fastForwardTo(moment || { sub_game: Infinity, step: Infinity });
   const q = new URLSearchParams(location.search);
   q.set("perspective", p);
   history.replaceState(null, "", "?" + q.toString());

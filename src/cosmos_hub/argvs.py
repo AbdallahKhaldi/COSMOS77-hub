@@ -18,7 +18,6 @@ windows in-house); it is the only kind that does.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from .config import COP_PORT, RELAY_PORT, ROLES, THIEF_PORT, Settings
@@ -27,20 +26,12 @@ from .runspec import RunSpec
 PORTS = {"cop": COP_PORT, "thief": THIEF_PORT}
 _PACKAGES = {"cop": "cosmos77_cop", "thief": "cosmos77_thief"}
 _CONSOLES = {"cop": "cosmos-cop", "thief": "cosmos-thief"}
+_VENV = ".venv/bin"
 
 
 def _venv_bin(settings: Settings, role: str, tool: str) -> str:
     """Venv executable: the tracked process must BE the game, never a uv-run wrapper."""
-    return str(settings.repo(role) / ".venv" / "bin" / tool)
-
-
-def spawn_env(vary_seed: int | None = None, role: str = "") -> dict[str, str]:
-    """Hub env minus VIRTUAL_ENV; a seed arms per-role tie-break variety (demos only)."""
-    env = dict(os.environ)
-    env.pop("VIRTUAL_ENV", None)
-    if vary_seed is not None:
-        env["COSMOS_VARY_SEED"] = str(vary_seed + (1 if role == "thief" else 0))
-    return env
+    return str(settings.repo(role) / _VENV / tool)
 
 
 def standing_argv(role: str, settings: Settings) -> list[str]:

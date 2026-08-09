@@ -32,7 +32,8 @@ async def start_demo(request: Request) -> dict[str, str | bool]:
     manager: Manager = request.app.state.manager
     active = manager.active
     if active is not None:
-        return {"run_id": active.out_stamp, "watch": "live", "joined": True}
+        return {"run_id": active.out_stamp, "watch": "live", "joined": True,
+                "server_paced": True}
     gate.admit()  # raises HTTPException 429 on cooldown/quota
     spec = RunSpec(kind="selfplay", opponent_gid="cosmos77-mirror",
                    windows=1, out_stamp=fresh_stamp("selfplay"))
@@ -41,4 +42,4 @@ async def start_demo(request: Request) -> dict[str, str | bool]:
     except RunRefusedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     gate.note_started()
-    return {"run_id": run_id, "watch": "live", "joined": False}
+    return {"run_id": run_id, "watch": "live", "joined": False, "server_paced": True}

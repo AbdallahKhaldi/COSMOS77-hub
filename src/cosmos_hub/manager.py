@@ -36,12 +36,12 @@ class Manager:
         self._logs, self._lock = [], threading.RLock()  # open log handles + state lock
 
     def _spawn(self, name: str, argv: list[str], tag: str, vary_seed: int | None = None,
-               ) -> subprocess.Popen[bytes]:
+               dwell_ms: int | None = None) -> subprocess.Popen[bytes]:
         """Start one subprocess, logging its output under the hub data dir."""
         self.settings.logs_dir.mkdir(parents=True, exist_ok=True)
         self._logs.append(out := open(self.settings.logs_dir / f"{name}-{tag}.log", "ab"))  # noqa: SIM115
         proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)),
-                                env=argvs.spawn_env(vary_seed, name), stdout=out,
+                                env=seeds.spawn_env(vary_seed, name, dwell_ms), stdout=out,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         log.info("spawned %s (%s) pid=%d", name, tag, proc.pid)
         return proc
@@ -93,10 +93,10 @@ class Manager:
             self._kill_all()
             for out in argvs.run_out_dirs(spec, self.settings):
                 out.mkdir(parents=True, exist_ok=True)
-            vary = seeds.run_seed(spec)
+            vary, dwell = seeds.run_seed(spec), seeds.turn_delay_ms(spec)
             for role in argvs.active_roles(spec, self.settings):
                 self.procs[role] = self._spawn(role, argvs.run_argv(role, spec, self.settings),
-                                               spec.out_stamp, vary_seed=vary)
+                                               spec.out_stamp, vary_seed=vary, dwell_ms=dwell)
             relay = argvs.relay_argv(self.settings, spec)
             self.procs[RELAY] = self._spawn(RELAY, relay, spec.out_stamp)
             self.active = spec

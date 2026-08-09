@@ -88,4 +88,21 @@ test("END-TO-END: a switch at step 7 lands the other feed at step 7, not spawn",
   assert.equal(frames, 1, "and it catches up within a single frame");
 });
 
+test("switching after a finished run fast-forwards to the END, never replays it", () => {
+  // the sentinel the page passes when there is no moment to hold (attract mode)
+  const toEnd = { sub_game: Infinity, step: Infinity };
+  const stream = [];
+  for (let s = 1; s <= 35; s += 1) stream.push(view(s));
+  stream.push(windowEnd(1));
+  let cursor = 0, applied = 0;
+  for (let guard = 0; guard < 200 && cursor < stream.length; guard += 1) {
+    const d = drainDecision({ pending: stream[cursor], fastForward: toEnd, paceMs: 650,
+      nowMs: 0, lastViewAt: 0, backlog: stream.length - cursor, tweens: 0 });
+    assert.equal(d.do, "apply", "every envelope applies instantly");
+    assert.equal(d.instant, true, "and none of it animates");
+    cursor += 1; applied += 1;
+  }
+  assert.equal(applied, stream.length, "the whole finished game lands at once");
+});
+
 console.log(`\nALL ${passed} PACING PINS HOLD`);

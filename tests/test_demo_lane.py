@@ -31,7 +31,7 @@ def test_demo_starts_a_one_window_selfplay(app_client: Any) -> None:
         manager.start_run = original
     assert response.status_code == 200
     assert response.json() == {"run_id": "selfplay-test-0001", "watch": "live",
-                               "joined": False}
+                               "joined": False, "server_paced": True}
     spec, source = calls[0]
     assert (spec.kind, spec.windows, source) == ("selfplay", 1, "demo")
     assert spec.their_cop_url is None and spec.their_thief_url is None
@@ -101,6 +101,21 @@ def test_demo_busy_maps_to_409(app_client: Any) -> None:
     finally:
         manager.start_run = original
     assert response.status_code == 409
+
+
+def test_spectator_runs_are_paced_by_the_server_not_the_browser(app_client: Any) -> None:
+    """Demo selfplays dwell per view so the feed is genuinely live; league runs do not."""
+    from cosmos_hub import seeds
+    from cosmos_hub.runspec import RunSpec
+    from cosmos_hub.seeds import spawn_env
+
+    demo = RunSpec(kind="selfplay", opponent_gid="cosmos77-mirror", windows=1, out_stamp="s")
+    league = RunSpec(kind="f2", opponent_gid="rival", windows=6, out_stamp="s")
+    assert seeds.turn_delay_ms(demo) == seeds.SPECTATOR_DWELL_MS
+    assert seeds.turn_delay_ms(league) is None
+    env = spawn_env(None, "cop", seeds.turn_delay_ms(demo))
+    assert env["COSMOS_TURN_DELAY_MS"] == str(seeds.SPECTATOR_DWELL_MS)
+    assert "COSMOS_TURN_DELAY_MS" not in spawn_env(None, "cop", seeds.turn_delay_ms(league))
 
 
 def test_demo_lane_carries_no_counted_surface(app_client: Any) -> None:

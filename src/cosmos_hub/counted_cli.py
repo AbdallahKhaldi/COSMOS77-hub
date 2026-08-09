@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from . import argvs, config, persist
+from . import argvs, config, persist, seeds
 from .runspec import GID_RE, RunSpec
 
 CONFIRMATION = "ARM COUNTED"
@@ -113,10 +113,10 @@ def main(argv: list[str] | None = None) -> int:
             return 4
         relay = subprocess.Popen(argvs.relay_argv(settings, spec),
                                  cwd=str(settings.repo(config.RELAY)),
-                                 env=argvs.spawn_env())
+                                 env=seeds.spawn_env())
         procs = [
             subprocess.Popen(commands[role], cwd=str(settings.repo(role)),
-                             env=argvs.spawn_env())
+                             env=seeds.spawn_env())
             for role in roles
         ]
         rcs = [proc.wait() for proc in procs]

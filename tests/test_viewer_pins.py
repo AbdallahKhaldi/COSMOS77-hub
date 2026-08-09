@@ -20,4 +20,4 @@ def test_viewer_pacing_pins_hold() -> None:
         capture_output=True, text=True, timeout=60, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "ALL 8 PACING PINS HOLD" in result.stdout
+    assert "ALL 9 PACING PINS HOLD" in result.stdout
