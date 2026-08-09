@@ -17,7 +17,6 @@ import sys
 import time
 
 from . import argvs, config
-from .manager import spawn_env
 from .runspec import GID_RE, RunSpec
 
 CONFIRMATION = "ARM COUNTED"
@@ -96,7 +95,8 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
             return 4
         procs = [
-            subprocess.Popen(commands[role], cwd=str(settings.repo(role)), env=spawn_env())
+            subprocess.Popen(commands[role], cwd=str(settings.repo(role)),
+                             env=argvs.spawn_env())
             for role in config.ROLES
         ]
         rcs = [proc.wait() for proc in procs]

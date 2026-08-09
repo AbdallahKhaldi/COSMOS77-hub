@@ -41,9 +41,10 @@ def test_api_status_shape(client):
     body = client.get("/api/status").json()
     assert body["state"] == "standing"
     assert body["run"] is None
-    assert set(body["agents"]) == {"cop", "thief"}
+    assert set(body["agents"]) == {"cop", "thief", "relay"}
     assert body["endpoints"]["cop"] == "https://hub.test/cop/mcp"
     assert body["endpoints"]["thief"] == "https://hub.test/thief/mcp"
+    assert body["endpoints"]["single"] == "https://hub.test/mcp"
 
 
 def test_api_runs_lists_and_flags(client, settings):

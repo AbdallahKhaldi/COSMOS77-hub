@@ -14,6 +14,8 @@ from dataclasses import dataclass
 WEB_KINDS = ("selfplay", "f1", "f2")
 GID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+# Mirrors the agents' `serve --scent-model` choices (protocol/locks.py registry).
+SCENT_MODELS = ("subtractive_chebyshev_v1", "multiplicative_book_v1")
 _URL_MAX = 300
 
 
@@ -34,6 +36,7 @@ class RunSpec:
     their_cop_url: str | None = None
     their_thief_url: str | None = None
     their_single_url: str | None = None
+    scent_model: str | None = None
     windows: int = 6
     out_stamp: str = ""
 
@@ -65,6 +68,14 @@ def _clean_url(name: str, url: str | None) -> str | None:
     return url
 
 
+def clean_scent_model(value: object) -> str | None:
+    """Allowlist an optional scent-model request (argv-safe by construction)."""
+    scent = str(value or "") or None
+    if scent is not None and scent not in SCENT_MODELS:
+        raise RunRefusedError(f"scent_model must be one of {list(SCENT_MODELS)}")
+    return scent
+
+
 def web_runspec(body: dict[str, object]) -> RunSpec:
     """Build a RunSpec from an untrusted web payload; refuses counted and argv smuggling."""
     for value in body.values():
@@ -89,6 +100,7 @@ def web_runspec(body: dict[str, object]) -> RunSpec:
         their_cop_url=_clean_url("their_cop_url", body.get("their_cop_url")),  # type: ignore[arg-type]
         their_thief_url=_clean_url("their_thief_url", body.get("their_thief_url")),  # type: ignore[arg-type]
         their_single_url=_clean_url("their_single_url", body.get("their_single_url")),  # type: ignore[arg-type]
+        scent_model=clean_scent_model(body.get("scent_model")),
         windows=windows,
         out_stamp=fresh_stamp(kind),
     )

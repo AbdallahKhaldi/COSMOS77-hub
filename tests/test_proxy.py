@@ -77,19 +77,43 @@ def test_thief_path_maps_to_8802_and_delete_passes(settings):
     assert seen == {"url": "http://127.0.0.1:8802/mcp", "method": "DELETE"}
 
 
+def test_single_url_path_maps_to_relay_8803_same_contract(settings):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(request.headers)
+        seen["url"], seen["method"] = str(request.url), request.method
+        return httpx.Response(406, headers={"mcp-session-id": "srv-sess",
+                                            "content-type": "application/json"},
+                              stream=Body(b"Not Acceptable"))
+
+    with make_client_with_upstream(settings, handler) as client:
+        response = client.get("/mcp", headers={"Accept": "application/json, text/event-stream",
+                                               "mcp-session-id": "cli-sess"})
+        assert seen["url"] == "http://127.0.0.1:8803/mcp"
+        assert seen["host"] == "127.0.0.1:8803"
+        assert seen["accept"] == "application/json, text/event-stream"
+        assert seen["mcp-session-id"] == "cli-sess"
+        assert response.status_code == 406  # bare-GET ready signal survives via the relay too
+        assert response.headers["mcp-session-id"] == "srv-sess"
+        deleted = client.delete("/mcp")
+        assert deleted.status_code == 406 and seen["method"] == "DELETE"
+
+
 def test_no_redirect_on_trailing_slash_or_scheme_variants(settings):
     def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
         return httpx.Response(406, stream=Body(b""))
 
     with make_client_with_upstream(settings, handler) as client:
-        for path in ("/cop/mcp/", "/thief/mcp/", "/COP/mcp"):
+        for path in ("/cop/mcp/", "/thief/mcp/", "/mcp/", "/COP/mcp", "/MCP"):
             response = client.get(path)
             assert response.status_code not in REDIRECTS
             assert "location" not in response.headers
         for proto in ("http", "https"):
-            response = client.post("/cop/mcp", content=b"{}",
-                                   headers={"x-forwarded-proto": proto})
-            assert response.status_code not in REDIRECTS
+            for path in ("/cop/mcp", "/mcp"):
+                response = client.post(path, content=b"{}",
+                                       headers={"x-forwarded-proto": proto})
+                assert response.status_code not in REDIRECTS
 
 
 def test_plain_502_when_upstream_down(settings):
@@ -97,10 +121,11 @@ def test_plain_502_when_upstream_down(settings):
         raise httpx.ConnectError("connection refused")
 
     with make_client_with_upstream(settings, handler) as client:
-        response = client.post("/cop/mcp", json={"jsonrpc": "2.0"})
-    assert response.status_code == 502
-    assert response.headers["content-type"].startswith("text/plain")
-    assert "<html" not in response.text.lower()
+        for path in ("/cop/mcp", "/thief/mcp", "/mcp"):  # /mcp: relay down -> same plain 502
+            response = client.post(path, json={"jsonrpc": "2.0"})
+            assert response.status_code == 502, path
+            assert response.headers["content-type"].startswith("text/plain")
+            assert "<html" not in response.text.lower()
 
 
 def test_sse_headers_survive_and_body_is_not_length_buffered(settings):
@@ -113,12 +138,13 @@ def test_sse_headers_survive_and_body_is_not_length_buffered(settings):
         )
 
     with make_client_with_upstream(settings, handler) as client:
-        response = client.post("/cop/mcp", json={"jsonrpc": "2.0"})
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "text/event-stream"
-    assert response.headers["cache-control"] == "no-cache, no-transform"
-    assert "content-length" not in response.headers
-    assert "data: one" in response.text and "data: two" in response.text
+        for path in ("/cop/mcp", "/mcp"):
+            response = client.post(path, json={"jsonrpc": "2.0"})
+            assert response.status_code == 200, path
+            assert response.headers["content-type"] == "text/event-stream"
+            assert response.headers["cache-control"] == "no-cache, no-transform"
+            assert "content-length" not in response.headers
+            assert "data: one" in response.text and "data: two" in response.text
 
 
 async def test_sse_chunks_pass_through_before_upstream_finishes():

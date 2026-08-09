@@ -38,12 +38,13 @@ async def api_status(request: Request) -> dict[str, Any]:
             "run_id": spec.out_stamp, "kind": spec.kind,
             "opponent_gid": spec.opponent_gid, "windows": spec.windows,
         },
-        "agents": manager.agents_alive(),
+        "agents": manager.agents_alive(),  # includes "relay" (backs the /mcp single URL)
         "viewers": request.app.state.hub.broadcaster.client_count(),
         "seq": request.app.state.hub.log.seq,
         "endpoints": {
             "cop": f"{settings.public_url}/cop/mcp",
             "thief": f"{settings.public_url}/thief/mcp",
+            "single": f"{settings.public_url}/mcp",
         },
         "ledger": _ledger(settings),
         "uptime_s": round(time.time() - _BOOTED, 1),

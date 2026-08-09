@@ -17,7 +17,14 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Request
 
 from .manager import Manager
-from .runspec import GID_RE, CountedRefusedError, RunRefusedError, RunSpec, fresh_stamp
+from .runspec import (
+    GID_RE,
+    CountedRefusedError,
+    RunRefusedError,
+    RunSpec,
+    clean_scent_model,
+    fresh_stamp,
+)
 
 router = APIRouter()
 Resolver = Callable[[str], list[str]]
@@ -103,6 +110,7 @@ def build_spec(body: dict[str, Any], resolver: Resolver) -> RunSpec:
             kind=kind,
             opponent_gid=_gid(body),
             their_cop_url=cop, their_thief_url=thief, their_single_url=single,
+            scent_model=clean_scent_model(body.get("scent_model")),
             windows=1 if kind == "f1" else 6,
             out_stamp=fresh_stamp(kind),
         )

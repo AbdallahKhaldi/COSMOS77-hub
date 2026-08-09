@@ -13,13 +13,17 @@ imported, never mounted in-process (two-process constitutional rule).
   │  cosmos_hub (FastAPI, 0.0.0.0:$PORT)                              │
   │   ├─ /cop/mcp    ──strict reverse proxy──▶ 127.0.0.1:8801/mcp     │
   │   ├─ /thief/mcp  ──strict reverse proxy──▶ 127.0.0.1:8802/mcp     │
+  │   ├─ /mcp        ──strict reverse proxy──▶ 127.0.0.1:8803/mcp     │
   │   ├─ / /replay/{id} /docs /league /admin  (templates, Track C)    │
-  │   ├─ /api/status /api/runs /api/challenge /api/pair /api/replays  │
+  │   ├─ /api/status /api/runs /api/challenge /api/doctor /api/pair   │
+  │   ├─ /api/replays/{id}                                            │
   │   ├─ /api/admin/run|stop|logs|report-dry-run  (cookie-auth)       │
   │   ├─ /ws/live?perspective=police|thief  (snapshot then stream)    │
   │   └─ manager: spawns/stops ▼ and tails their runs/<stamp>/ files  │
   │  COSMOS77-cop  subprocess  (uv venv, port 8801)                   │
   │  COSMOS77-thief subprocess (uv venv, port 8802)                   │
+  │  sparring relay subprocess (cop repo script, port 8803):          │
+  │    odd windows ──▶ :8801/mcp   even windows ──▶ :8802/mcp         │
   └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,6 +45,30 @@ imported, never mounted in-process (two-process constitutional rule).
 - **Counted rail** — every web-reachable run path refuses `kind=counted` and any
   `--counted` argv with 403 (pinned by tests). Counted runs exist only through the
   SSH-only `cosmos-hub-counted` CLI below.
+- **Universal compatibility** — the hub pairs with every course topology in both
+  directions. Inbound: per-role URLs (`/cop/mcp`, `/thief/mcp`) **and** one single
+  URL (`/mcp`) backed by a third standing subprocess, the cop repo's
+  `scripts/sparring_relay.py` (window parity: odd windows → cop, even → thief;
+  ownership follows each greeting's `sub_game_number`), tracked and healed by the
+  manager like the agents. Outbound: run bodies accept `their_single_url` (both our
+  serves dial it) and an optional `scent_model`
+  (`subtractive_chebyshev_v1` | `multiplicative_book_v1`, allowlisted → `serve
+  --scent-model`). Diagnosis: `POST /api/doctor` probes a candidate opponent.
+
+## Public HTTP surface
+
+| Route | Method | Purpose |
+| --- | --- | --- |
+| `/cop/mcp` · `/thief/mcp` | GET/POST/DELETE | per-role MCP endpoints (strict proxy, 406 when standing) |
+| `/mcp` | GET/POST/DELETE | single-URL MCP endpoint → window-parity relay (:8803); plain 502 while the relay is down |
+| `/` · `/replay/{id}` · `/docs` · `/league` · `/admin` | GET | pages (Track C templates) |
+| `/health` | GET | plain `ok` |
+| `/api/status` | GET | posture, active run, `agents` liveness incl. `relay`, `endpoints.single` |
+| `/api/runs` · `/api/replays/{id}` | GET | run index / settled replay JSON |
+| `/api/challenge` | POST | public friendly run; body may add `scent_model` |
+| `/api/doctor` | POST | `{url}` or `{cop_url,thief_url}` (+`gid`) → shells `cosmos-cop doctor --json` (60 s cap, argv list only, cwd = cop repo); returns the doctor JSON + `elapsed_ms`; 502 on garbage output, 503 when the subcommand is unavailable, 504 on timeout. Same SSRF rails and the SAME rate budget as `/api/challenge` (one shared 90 s cooldown + 10/day) |
+| `/api/pair` | POST | pairing packet via the cop repo |
+| `/ws/live` | WS | one perspective per socket |
 
 ## Environment
 
@@ -101,12 +129,19 @@ uv run cosmos-hub-counted --opponent-gid <gid> \
 CI step can ever invoke it. Admin `/api/admin/run` additionally 403s `kind=counted`
 and any argv containing `--counted` — both rails are covered by tests.
 
+While the hold file exists the manager also stops the tracked sparring relay, so
+port 8803 is free. If the counted opponent needs the single-URL topology, run the
+relay by hand in a second SSH terminal (`cd /app/COSMOS77-cop && uv run python
+scripts/sparring_relay.py --port 8803`) — the hub's `/mcp` proxy keeps pointing at
+127.0.0.1:8803 no matter who owns the process.
+
 ## Layout
 
-`src/cosmos_hub/` — `config` (env), `manager` (subprocess lifecycle), `proxy` (MCP
-reverse proxy), `events`/`envelopes`/`broadcast`/`ws` (live pipeline), `replay`/
-`frames` (settled replays + seal verification), `challenge` (public rate-limited
-runs), `pair` (pairing packets via the cop repo), `admin` (HMAC-cookie ops),
-`status_api`, `pages`, `counted_cli`. Templates and `static/` are Track C property;
-the hub serves them by exact filename. All artifacts under `runs/` are read-only
-bytes to the hub — never rewritten, never pretty-printed.
+`src/cosmos_hub/` — `config` (env), `manager` (subprocess lifecycle: agents + relay),
+`proxy` (MCP reverse proxy incl. `/mcp`), `events`/`envelopes`/`broadcast`/`ws`
+(live pipeline), `replay`/`frames` (settled replays + seal verification),
+`challenge` (public rate-limited runs), `doctor` (public pairing diagnosis),
+`pair` (pairing packets via the cop repo), `admin` (HMAC-cookie ops), `status_api`,
+`pages`, `counted_cli`. Templates and `static/` are Track C property; the hub
+serves them by exact filename. All artifacts under `runs/` are read-only bytes to
+the hub — never rewritten, never pretty-printed.

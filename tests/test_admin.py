@@ -57,6 +57,24 @@ def test_login_sets_cookie_and_unlocks(client, fake_procs):
     assert one.status_code == 200 and "tail" in one.json()
 
 
+def test_admin_run_passes_single_url_and_scent_model_to_both_serves(client):
+    client.post("/api/admin/login", json={"password": "hub-pw"})
+    response = client.post("/api/admin/run", json={
+        "kind": "f2", "opponent_gid": "rival",
+        "their_single_url": "https://one.example/mcp",
+        "scent_model": "multiplicative_book_v1"})
+    assert response.status_code == 200
+    for role in ("cop", "thief"):
+        argv = client.app.state.manager.procs[role].argv
+        assert argv[argv.index("--peer-url") + 1] == "https://one.example/mcp"
+        assert argv[argv.index("--scent-model") + 1] == "multiplicative_book_v1"
+    client.post("/api/admin/stop", json={})
+    bad = client.post("/api/admin/run", json={"kind": "f2", "opponent_gid": "rival",
+                                              "their_single_url": "https://one.example/mcp",
+                                              "scent_model": "nope_v0"})
+    assert bad.status_code == 409  # RunRefusedError surfaces as 409 on the admin surface
+
+
 def test_forged_or_expired_cookie_rejected(client):
     client.cookies.set(admin.COOKIE, "123.deadbeef")
     assert client.post("/api/admin/stop", json={}).status_code == 401

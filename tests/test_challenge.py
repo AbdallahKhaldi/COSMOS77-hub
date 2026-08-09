@@ -65,6 +65,17 @@ def test_f2_runs_six_windows(challenge_client):
     assert spec.windows == 6 and spec.their_single_url == "https://r.example/mcp"
 
 
+def test_scent_model_accepted_on_challenge_and_unknown_rejected(challenge_client):
+    ok = challenge_client.post("/api/challenge",
+                               json=_payload(scent_model="subtractive_chebyshev_v1"))
+    assert ok.status_code == 200
+    spec, _ = challenge_client.app.state.manager.started[0]
+    assert spec.scent_model == "subtractive_chebyshev_v1"
+    challenge_client.app.state.challenge_gate = ChallengeGate()  # sidestep cooldown
+    bad = challenge_client.post("/api/challenge", json=_payload(scent_model="weird_v0"))
+    assert bad.status_code == 422
+
+
 def test_http_scheme_rejected(challenge_client):
     response = challenge_client.post(
         "/api/challenge", json=_payload(their_cop_url="http://rival.example/mcp"))

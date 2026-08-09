@@ -20,13 +20,13 @@ def manager(settings, fake_procs, notes):
 
 def test_standing_uses_the_transport_only_asgi_app(manager, settings):
     manager.start_standing()
-    assert set(manager.procs) == {"cop", "thief"}
+    assert set(manager.procs) == {"cop", "thief", "relay"}
     cop = manager.procs["cop"]
     assert "cosmos77_cop.net.asgi:app" in cop.argv and "8801" in cop.argv
     assert cop.cwd == str(settings.cop_repo)
     thief = manager.procs["thief"]
     assert "cosmos77_thief.net.asgi:app" in thief.argv and "8802" in thief.argv
-    assert manager.agents_alive() == {"cop": True, "thief": True}
+    assert manager.agents_alive() == {"cop": True, "thief": True, "relay": True}
 
 
 def test_run_swaps_standing_for_configured_serve(manager, settings, notes):
@@ -94,8 +94,8 @@ def test_tick_heals_dead_standing_agents(manager):
     manager.procs["cop"].rc = 1  # crashed
     old_thief = manager.procs["thief"].pid
     manager.tick()
-    assert manager.agents_alive() == {"cop": True, "thief": True}
-    assert manager.procs["thief"].pid != old_thief  # full respawn, fresh pair
+    assert manager.agents_alive() == {"cop": True, "thief": True, "relay": True}
+    assert manager.procs["thief"].pid != old_thief  # full respawn, fresh trio
 
 
 def test_hold_file_stands_everything_down(manager, settings):
@@ -108,7 +108,7 @@ def test_hold_file_stands_everything_down(manager, settings):
         manager.start_run(web_runspec({"kind": "selfplay"}))
     settings.hold_file.unlink()
     manager.tick()
-    assert manager.agents_alive() == {"cop": True, "thief": True}
+    assert manager.agents_alive() == {"cop": True, "thief": True, "relay": True}
 
 
 def test_stop_run_returns_to_standing(manager):
@@ -116,10 +116,27 @@ def test_stop_run_returns_to_standing(manager):
     manager.start_run(web_runspec({"kind": "selfplay"}))
     assert manager.stop_run() is True
     assert manager.active is None
-    assert set(manager.procs) == {"cop", "thief"}  # standing again
+    assert set(manager.procs) == {"cop", "thief", "relay"}  # standing again
 
 
 def test_missing_opponent_url_refused(manager):
     spec = RunSpec(kind="f1", opponent_gid="rival", windows=1, out_stamp="f1-x")
     with pytest.raises(RunRefusedError):
         manager.start_run(spec)
+
+
+def test_scent_model_passes_through_to_both_serves(manager):
+    spec = web_runspec({"kind": "f1", "opponent_gid": "rival",
+                        "their_single_url": "https://one.example/mcp",
+                        "scent_model": "multiplicative_book_v1"})
+    manager.start_run(spec)
+    for role in ("cop", "thief"):
+        argv = manager.procs[role].argv
+        assert argv[argv.index("--scent-model") + 1] == "multiplicative_book_v1"
+
+
+def test_unknown_scent_model_refused_and_absent_by_default(manager):
+    with pytest.raises(RunRefusedError):
+        web_runspec({"kind": "selfplay", "scent_model": "additive_v9"})
+    manager.start_run(web_runspec({"kind": "selfplay"}))
+    assert "--scent-model" not in manager.procs["cop"].argv

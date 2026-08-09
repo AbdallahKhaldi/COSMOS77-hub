@@ -15,7 +15,9 @@ from pathlib import Path
 HUB_ROOT = Path(__file__).resolve().parents[2]
 COP_PORT = 8801
 THIEF_PORT = 8802
+RELAY_PORT = 8803
 ROLES = ("cop", "thief")
+RELAY = "relay"  # third standing subprocess: window-parity router behind public /mcp
 
 
 @dataclass(frozen=True)
@@ -36,9 +38,9 @@ class Settings:
     gmail_credentials_b64: str | None = field(default=None, repr=False)
     gmail_token_b64: str | None = field(default=None, repr=False)
 
-    def repo(self, role: str) -> Path:
-        """Working directory of the agent repo playing *role* (``cop`` | ``thief``)."""
-        return self.cop_repo if role == "cop" else self.thief_repo
+    def repo(self, name: str) -> Path:
+        """Working directory for *name*: ``thief`` → thief repo, else cop (relay too)."""
+        return self.thief_repo if name == "thief" else self.cop_repo
 
     def runs_dir(self, role: str, stamp: str) -> Path:
         """Artifact directory a run writes under *role*'s repo (each side keeps its own)."""

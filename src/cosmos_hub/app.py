@@ -17,6 +17,7 @@ from . import (
     admin,
     challenge,
     config,
+    doctor,
     pages,
     pair,
     proxy,
@@ -76,8 +77,8 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     app.state.challenge_gate = challenge.ChallengeGate()
     app.state.challenge_resolver = challenge.default_resolver
     app.state.proxy_client = proxy.make_client()  # closed by the lifespan teardown
-    for router in (pages.router, proxy.router, challenge.router, pair.router,
-                   admin.router, replay.router, status_api.router, ws.router):
+    for router in (pages.router, proxy.router, challenge.router, doctor.router,
+                   pair.router, admin.router, replay.router, status_api.router, ws.router):
         app.include_router(router)
     if settings.static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")

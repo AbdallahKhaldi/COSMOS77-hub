@@ -1,10 +1,11 @@
-"""Strict MCP reverse proxy: /cop/mcp -> 127.0.0.1:8801/mcp, /thief/mcp -> :8802/mcp.
+"""Strict MCP reverse proxy: /cop/mcp -> :8801, /thief/mcp -> :8802, /mcp -> :8803.
 
 Non-negotiable contract (recon `urls`): never redirect at the published paths, pass
 GET/POST/DELETE, preserve Accept / Content-Type / mcp-session-id / mcp-protocol-version
 in BOTH directions, rewrite Host to the upstream bind, stream SSE unbuffered, answer a
-plain 502 when the agent subprocess is down, and add no auth, cookies, or styled errors.
-The 406-to-bare-GET readiness probe must pass through verbatim.
+plain 502 when the upstream subprocess is down, and add no auth, cookies, or styled
+errors.  The 406-to-bare-GET readiness probe must pass through verbatim.  ``/mcp``
+serves single-URL opponents via the window-parity sparring relay (same contract).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from starlette.background import BackgroundTask
 from starlette.responses import PlainTextResponse, Response, StreamingResponse
 
 from .argvs import PORTS
+from .config import RELAY_PORT
 
 router = APIRouter()
 _HOP = {
@@ -85,3 +87,9 @@ async def cop_mcp(request: Request) -> Response:
 async def thief_mcp(request: Request) -> Response:
     """Published thief endpoint (opponents dial this)."""
     return await relay(request, PORTS["thief"])
+
+
+@router.api_route("/mcp", methods=["GET", "POST", "DELETE"], include_in_schema=False)
+async def single_mcp(request: Request) -> Response:
+    """Published single-URL endpoint (window-parity relay routes odd/even windows)."""
+    return await relay(request, RELAY_PORT)
