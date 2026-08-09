@@ -178,7 +178,7 @@ import { createGhost, createScentLayer, createBarrierPool, createTrail } from "/
 import { createCruiser, createRunner } from "/static/js/vehicles.js";
 import { loadKenneyAssets } from "/static/js/assets.js";
 import { Timeline } from "/static/js/timeline.js";
-import { connectLive, connectDemo } from "/static/js/net.js";
+import { connectLive, connectDemo, postJSON } from "/static/js/net.js";
 import { createDirector } from "/static/js/director.js";
 import { createHud } from "/static/js/hud.js";
 import { initMenu } from "/static/js/menu.js";
@@ -278,8 +278,29 @@ function setSource(next) {
   openSocket();
 }
 
-/* THE button — starts the demo fixture immediately, same path as ?demo=1 */
+/* THE button — try a REAL fresh selfplay on the server first (a new genuine
+   game every press); fall back to the recorded tape when the lane is busy or
+   rate-limited. ?demo=1 keeps forcing the tape. */
 function startDemo() {
+  if (urlDemo) { startTape(); return; }
+  hud.sysLine("// requesting a fresh live pursuit…");
+  postJSON("/api/demo", {})
+    .then(function (res) {
+      demoDone = false;
+      director.reset(perspective, "attract");
+      source = "live";
+      hud.setSource("live");
+      openSocket(); // the live feed streams the new run as it plays
+      hud.sysLine("// LIVE — real game " + res.run_id + " (fresh strategy every press)");
+    })
+    .catch(function (e) {
+      var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "lane busy";
+      hud.sysLine("// live lane unavailable (" + why + ") — playing the recorded tape");
+      startTape();
+    });
+}
+
+function startTape() {
   if (socket) socket.close();
   demoDone = false;
   demoResume = false; // the button always rewinds the tape
