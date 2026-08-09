@@ -87,9 +87,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def _freshness(request, call_next):  # noqa: ANN001, ANN202
-        """Pages and app JS/CSS must revalidate every load (a stale client silently
-        undoes server fixes); versioned vendor dirs stay long-cached.
-        """
+        """App pages/JS/CSS revalidate every load; versioned vendor stays cached."""
         response = await call_next(request)
         path = request.url.path
         app_asset = (path.startswith(("/static/js/", "/static/css/", "/static/fixtures/"))
