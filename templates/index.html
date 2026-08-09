@@ -40,6 +40,16 @@
       <div class="banner locked" id="banner" role="status" aria-live="polite">STANDBY</div>
       <div class="pill" id="linkPill">booting…</div>
       <div class="wanted" id="wanted" aria-live="polite">★★★★★</div>
+      <div class="stage-ctl" id="stageCtl">
+        <div class="seg seg--mini" id="camSeg" role="group" aria-label="camera mode">
+          <button data-cam="top" aria-pressed="true">Top</button>
+          <button data-cam="chase" aria-pressed="false">Chase</button>
+        </div>
+        <div class="seg seg--mini" id="dnSeg" role="group" aria-label="time of day">
+          <button data-preset="day" aria-pressed="true">Day</button>
+          <button data-preset="night" aria-pressed="false">Night</button>
+        </div>
+      </div>
       <div class="slam" id="slam" aria-hidden="true">
         <div class="word" id="slamWord"></div>
         <div class="detail mono" id="slamDetail"></div>
@@ -141,7 +151,9 @@
 <!-- ============================== BOOTSTRAP ============================== -->
 <script type="module">
 import { createArena, qualityFromQuery } from "/static/js/scene.js";
-import { createCruiser, createRunner, createGhost, createScentLayer, createBarrierPool, createTrail } from "/static/js/entities.js";
+import { createGhost, createScentLayer, createBarrierPool, createTrail } from "/static/js/entities.js";
+import { createCruiser, createRunner } from "/static/js/vehicles.js";
+import { loadKenneyAssets } from "/static/js/assets.js";
 import { Timeline } from "/static/js/timeline.js";
 import { connectLive, connectDemo } from "/static/js/net.js";
 import { createDirector } from "/static/js/director.js";
@@ -151,8 +163,13 @@ const params = new URLSearchParams(location.search);
 const demo = params.get("demo") === "1";
 let perspective = params.get("perspective") === "thief" ? "thief" : "police";
 
+/* ARENA V2: bright golden-hour city by default; night is a persisted toggle */
+const PRESET_KEY = "cosmos77.arena.preset";
+let preset = "day";
+try { if (localStorage.getItem(PRESET_KEY) === "night") preset = "night"; } catch (_e) { /* private mode */ }
+
 const stage = document.getElementById("stage");
-const arena = createArena(stage, { quality: qualityFromQuery() });
+const arena = createArena(stage, { quality: qualityFromQuery(), preset });
 
 /* one vehicle rig per perspective; the other stays parked off-world */
 const cruiser = createCruiser(arena.tier);
@@ -164,12 +181,37 @@ const trail = createTrail(0x2b7fff);
 arena.scene.add(cruiser.group, runner.group, ghost.group, scent.mesh, barriers.mesh, trail.mesh);
 runner.group.position.set(0, -60, 0); // parked below world until needed
 
+/* kenney glb hot-swap: parallel boot load, silent procedural fallback */
+loadKenneyAssets().then((assets) => {
+  if (!assets) return;
+  arena.upgradeWorld(assets);
+  if (assets.vehicles.police) cruiser.swapIn(assets.vehicles.police);
+  if (assets.vehicles.thief) runner.swapIn(assets.vehicles.thief);
+  if (assets.cone && assets.cone.material) barriers.attachCones(assets.cone.geometry, assets.cone.material);
+});
+
+function applyPreset(p) {
+  preset = p === "night" ? "night" : "day";
+  arena.setPreset(preset);
+  ghost.setPreset(preset);
+  scent.setPreset(preset);
+  trail.setPreset(preset);
+  cruiser.setPreset(preset);
+  runner.setPreset(preset);
+  try { localStorage.setItem(PRESET_KEY, preset); } catch (_e) { /* private mode */ }
+  document.querySelectorAll("#dnSeg button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.preset === preset));
+  });
+}
+
 function vehicleFor(p) {
   const police = p === "police";
   cruiser.group.position.y = police ? 0 : -60;
   runner.group.position.y = police ? -60 : 0;
   scent.setTint(police ? 0xff8a1e : 0x2b7fff); // we smell the OPPONENT's trail
-  return police ? cruiser : runner;
+  const v = police ? cruiser : runner;
+  arena.cameras.setChaseTarget(v.group); // CHASE follows OUR car only (live)
+  return v;
 }
 
 const timeline = new Timeline(perspective);
@@ -206,6 +248,17 @@ hud.wireChrome();
 hud.setMode("attract");
 hud.sysLine("// comms channel open — awaiting engagement");
 document.getElementById("tglScent").addEventListener("scent-toggle", (e) => scent.setVisible(e.detail));
+/* V2 stage controls: camera mode + time-of-day */
+document.querySelectorAll("#camSeg button").forEach((b) => {
+  b.addEventListener("click", () => {
+    arena.cameras.setMode(b.dataset.cam);
+    document.querySelectorAll("#camSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  });
+});
+document.querySelectorAll("#dnSeg button").forEach((b) => {
+  b.addEventListener("click", () => applyPreset(b.dataset.preset));
+});
+applyPreset(preset);
 director.start();
 openSocket();
 initChrome();

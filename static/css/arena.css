@@ -233,6 +233,7 @@ input::placeholder { color: #565c70; }
   font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
   color: var(--muted); background: rgba(8, 9, 14, .82);
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+  max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pill.warn { color: var(--road); border-color: #ffd40044; }
 .pill.demo { color: var(--neon); border-color: #ff2e8844; }
@@ -403,6 +404,26 @@ pre.code {
 }
 .foot a { color: var(--muted); }
 
+/* ------------------------------ stage controls (V2: cameras + time-of-day) */
+.stage-ctl {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 5; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+.seg--mini { background: rgba(8, 9, 14, .82); backdrop-filter: blur(6px); }
+.seg--mini button { padding: 6px 11px; font-size: 11px; }
+
+/* league: pre-arena runs (no replay) fold under a collapsed details */
+details.legacy summary {
+  cursor: pointer; list-style: none;
+  font-family: var(--disp); font-weight: 600; font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 8px;
+}
+details.legacy summary::-webkit-details-marker { display: none; }
+details.legacy summary::after { content: "▾"; margin-left: auto; transition: transform .2s; }
+details.legacy[open] summary::after { transform: rotate(180deg); }
+details.legacy .scoretab { margin-top: 10px; }
+
 /* toast */
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
@@ -421,6 +442,7 @@ pre.code {
   .statusbar { gap: 10px; padding: 9px 12px; }
   .statusbar .statustext { display: none; }
   .stage { aspect-ratio: 4 / 5; min-height: 320px; }
+  .stage-ctl { bottom: 42px; }
   .banner { font-size: 16px; padding: 5px 12px; }
   .scorestrip .pts { font-size: 30px; }
   .drawer .grid2 { grid-template-columns: 1fr; }

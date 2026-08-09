@@ -31,8 +31,6 @@ export function createDirector({ arena, timeline, hud, rig }) {
   let speed = 1;
   let mode = "attract";             // attract | live
   let tweens = [];
-  let camFollow = new THREE.Vector3(0, 0, 0);
-  let attractTheta = 0;
   let running = false;
 
   function backlog() { return timeline.events.length - cursor; }
@@ -128,6 +126,9 @@ export function createDirector({ arena, timeline, hud, rig }) {
     if (env.type !== "status" && mode !== "live") setMode("live");
     applyToRig(prev, state, env, moveDuration());
     hud.render(state, { backlog: backlog(), mode, env });
+    if (env.type === "window_end") {
+      arena.cameras.reframe(); // ARENA V2: auto-reframe TOP on window change
+    }
     if (env.type === "series_end") {
       setTimeout(() => { if (backlog() === 0) setMode("attract"); }, 14000);
     }
@@ -138,23 +139,12 @@ export function createDirector({ arena, timeline, hud, rig }) {
     hud.setMode(m);
   }
 
-  /* --------------------------------- cameras --------------------------- */
+  /* --------------------------------- cameras ---------------------------
+     ARENA V2: cameras.js owns TOP (clamped tactical orbit; drift only in
+     attract) and CHASE (third-person follow of OUR car — the feed
+     perspective's own vehicle, never the opponent's). */
   function updateCamera(dt) {
-    if (mode === "attract") {
-      if (!REDUCED) {
-        attractTheta += dt * 0.05; // slow city drift
-        const r = 110;
-        arena.camera.position.lerp(
-          tmpA.set(Math.sin(attractTheta) * r, 78, Math.cos(attractTheta) * r), Math.min(1, dt),
-        );
-      }
-      arena.controls.target.lerp(tmpB.set(0, 0, 0), Math.min(1, dt));
-      return;
-    }
-    // bodycam: shadow our vehicle from altitude; OrbitControls stays live so
-    // the viewer can grab the camera at any time — we only steer the target.
-    camFollow.lerp(rig.vehicle.group.position, Math.min(1, dt * 3));
-    arena.controls.target.copy(camFollow).setY(1.5);
+    arena.cameras.update(dt, mode === "attract" ? null : rig.vehicle.group.position);
   }
 
   /* ------------------------------ main loop ---------------------------- */
@@ -216,6 +206,7 @@ export function createDirector({ arena, timeline, hud, rig }) {
       rig.trail.setTint(perspective === "thief" ? 0xff8a1e : 0x2b7fff);
       arena.overlay.clear();
       arena.overlay.commit();
+      arena.cameras.reframe();
       setMode("attract");
       hud.render(state, { backlog: 0, mode: "attract", env: null });
     },

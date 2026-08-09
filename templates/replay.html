@@ -39,6 +39,17 @@
         <span class="badge ok" id="verifyBadge">VERIFIED OK</span>
       </div>
       <div class="pill" id="metaPill">loading…</div>
+      <div class="stage-ctl" id="stageCtl">
+        <div class="seg seg--mini" id="camSeg" role="group" aria-label="camera mode">
+          <button data-cam="top" aria-pressed="true">Top</button>
+          <button data-cam="cop" aria-pressed="false">Chase cop</button>
+          <button data-cam="thief" aria-pressed="false">Chase thief</button>
+        </div>
+        <div class="seg seg--mini" id="dnSeg" role="group" aria-label="time of day">
+          <button data-preset="day" aria-pressed="true">Day</button>
+          <button data-preset="night" aria-pressed="false">Night</button>
+        </div>
+      </div>
       <div class="slam" id="slam" aria-hidden="true">
         <div class="word" id="slamWord"></div>
         <div class="detail mono" id="slamDetail"></div>
@@ -61,7 +72,7 @@
         <div class="toggles" style="margin-top:10px">
           <button class="tgl" id="tglGhost" aria-pressed="true">Ghost trace</button>
           <button class="tgl" id="tglTruth" aria-pressed="true">True path</button>
-          <button class="tgl" id="tglScent" aria-pressed="true">Scent</button>
+          <button class="tgl" id="tglScent" aria-pressed="false">Scent</button>
         </div>
         <p class="sub" style="margin:9px 0 0">The <span style="color:#7ad7ff">cyan trace</span> is what our
         agent <i>believed</i>; the <span class="c-thief">orange path</span> is where the opponent
@@ -73,7 +84,10 @@
         <p class="sub" style="margin:0">Every move is commit-sealed (SHA-256) and audited after the
         window. The badge above flips to <b class="c-siren">TAMPERED</b> on any step whose reveal does
         not match its commitment.</p>
-        <div id="verdictLine" class="mono sub" style="margin-top:8px">—</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
+          <div id="verdictLine" class="mono sub" style="flex:1;min-width:120px">—</div>
+          <button class="btn btn--copy" id="btnEnding" title="seek to the last 3 frames of this window">▶ ENDING</button>
+        </div>
       </div>
 
       <div class="panel" id="endcard" style="display:none">

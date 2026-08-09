@@ -52,6 +52,16 @@
     </div>
   </section>
 
+  <details class="panel legacy" id="legacyWrap" style="margin-top:12px;display:none">
+    <summary>pre-arena runs (no replay)</summary>
+    <div style="overflow-x:auto">
+      <table class="scoretab" id="legacyTable">
+        <thead><tr><th>run</th><th>opponent</th><th>kind</th><th class="r-us">us</th><th class="r-them">them</th><th>verdict</th><th>replay</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </details>
+
   <footer class="foot">Scores are settled by mutual audit — no referee, no host, two signatures.</footer>
 </main>
 
@@ -64,6 +74,35 @@
     if (cls) td.className = cls;
     return td;
   }
+  function rowFor(r, withReplay) {
+    var tr = document.createElement("tr");
+    tr.appendChild(cell(r.run_id || r.id));
+    tr.appendChild(cell(r.opponent_gid || r.opponent));
+    tr.appendChild(cell(r.kind));
+    var s = r.score || {};
+    tr.appendChild(cell(s.us != null ? s.us : r.us, "r-us"));
+    tr.appendChild(cell(s.them != null ? s.them : r.them, "r-them"));
+    tr.appendChild(cell(r.verdict || r.result));
+    var tdR = document.createElement("td");
+    if (withReplay && r.settled !== false && (r.run_id || r.id)) {
+      var a = document.createElement("a");
+      a.href = "/replay/" + encodeURIComponent(r.run_id || r.id);
+      a.textContent = "▶ watch";
+      tdR.appendChild(a);
+    } else tdR.textContent = "—";
+    tr.appendChild(tdR);
+    return tr;
+  }
+  /* V2: legacy runs with no replay data (all-dash rows) fold under a
+     collapsed details — the headline table shows replayable runs only. */
+  function isLegacy(r) {
+    if (r.has_replay === false || r.replay === false || r.replay_available === false) return true;
+    var s = r.score || {};
+    var us = s.us != null ? s.us : r.us;
+    var them = s.them != null ? s.them : r.them;
+    var verdict = r.verdict || r.result;
+    return us == null && them == null && verdict == null;
+  }
   function fill(runs) {
     var tbody = document.querySelector("#runsTable tbody");
     tbody.innerHTML = "";
@@ -75,25 +114,24 @@
       tbody.appendChild(tr0);
       return;
     }
-    runs.forEach(function (r) {
-      var tr = document.createElement("tr");
-      tr.appendChild(cell(r.run_id || r.id));
-      tr.appendChild(cell(r.opponent_gid || r.opponent));
-      tr.appendChild(cell(r.kind));
-      var s = r.score || {};
-      tr.appendChild(cell(s.us != null ? s.us : r.us, "r-us"));
-      tr.appendChild(cell(s.them != null ? s.them : r.them, "r-them"));
-      tr.appendChild(cell(r.verdict || r.result));
-      var tdR = document.createElement("td");
-      if (r.settled !== false && (r.run_id || r.id)) {
-        var a = document.createElement("a");
-        a.href = "/replay/" + encodeURIComponent(r.run_id || r.id);
-        a.textContent = "▶ watch";
-        tdR.appendChild(a);
-      } else tdR.textContent = "—";
-      tr.appendChild(tdR);
-      tbody.appendChild(tr);
-    });
+    var main = [], legacy = [];
+    runs.forEach(function (r) { (isLegacy(r) ? legacy : main).push(r); });
+    if (!main.length) {
+      var trE = document.createElement("tr");
+      var tdE = cell("no replayable runs yet — see pre-arena runs below", "sub mono");
+      tdE.colSpan = 7;
+      trE.appendChild(tdE);
+      tbody.appendChild(trE);
+    }
+    main.forEach(function (r) { tbody.appendChild(rowFor(r, true)); });
+    if (legacy.length) {
+      var lbody = document.querySelector("#legacyTable tbody");
+      lbody.innerHTML = "";
+      legacy.forEach(function (r) { lbody.appendChild(rowFor(r, false)); });
+      document.getElementById("legacyWrap").style.display = "";
+      document.querySelector("#legacyWrap summary").textContent =
+        "pre-arena runs (no replay) · " + legacy.length;
+    }
   }
   fetch("/api/status", { headers: { Accept: "application/json" } })
     .then(function (r) { return r.json(); })
