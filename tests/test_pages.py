@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 
 from starlette.testclient import TestClient
 
 from cosmos_hub import secrets_boot
 from cosmos_hub.app import create_app
 from tests.conftest import make_settings
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def test_health_is_plain_ok(client):
@@ -77,3 +80,21 @@ def test_gmail_secrets_materialize_0600(tmp_path):
 def test_bad_base64_is_skipped_not_fatal(tmp_path):
     settings = make_settings(tmp_path, gmail_credentials_b64="!!notb64!!")
     assert secrets_boot.materialize(settings) == 0
+
+
+def test_the_viewer_learns_the_board_size_before_it_builds_the_city(client) -> None:
+    """A sandbox game may be 7x7..11x11; a city built for the wrong one shows a lie."""
+    body = client.get("/api/status").json()
+    assert body["grid"] == 7, "idle hub reports the league board"
+
+    page = (REPO / "templates" / "index.html").read_text(encoding="utf-8")
+    assert 'import { GRID, setGrid } from "/static/js/board.js"' in page
+    # the size must be applied BEFORE createArena, or the world is already built
+    assert page.index("setGrid(boot.grid") < page.index("createArena(stage")
+
+
+def test_no_recorded_fixture_survives_anywhere_in_the_arena() -> None:
+    """A canned game rendered through the live code path is indistinguishable from play."""
+    page = (REPO / "templates" / "index.html").read_text(encoding="utf-8")
+    for banned in ("demo-live.json", "connectDemo", "startTape", "demo=1"):
+        assert banned not in page, banned

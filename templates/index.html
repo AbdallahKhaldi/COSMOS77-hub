@@ -204,6 +204,7 @@ import { connectLive, postJSON } from "/static/js/net.js";
 import { createDirector } from "/static/js/director.js";
 import { createHud } from "/static/js/hud.js";
 import { initMenu } from "/static/js/menu.js";
+import { GRID, setGrid } from "/static/js/board.js";
 
 const params = new URLSearchParams(location.search);
 let perspective = params.get("perspective") === "thief" ? "thief" : "police";
@@ -212,6 +213,14 @@ let perspective = params.get("perspective") === "thief" ? "thief" : "police";
 const PRESET_KEY = "cosmos77.arena.preset";
 let preset = "day";
 try { if (localStorage.getItem(PRESET_KEY) === "night") preset = "night"; } catch (_e) { /* private mode */ }
+
+/* The board size must be settled BEFORE a single block of city is built: a
+   sandbox run may legally play 7x7 up to 11x11, and an arena built for the wrong
+   one draws a board that is not the board being played. One small request, then
+   everything downstream follows the live binding. */
+const boot = await fetch("/api/status", { headers: { Accept: "application/json" } })
+  .then((r) => r.json()).catch(() => ({}));
+setGrid(boot.grid || 7);
 
 const stage = document.getElementById("stage");
 const arena = createArena(stage, { quality: qualityFromQuery(), preset });
@@ -305,6 +314,12 @@ function startDemo() {
   hud.sysLine("// requesting a fresh live pursuit…");
   postJSON("/api/demo", chosenRules())
     .then(function (res) {
+      if (res.rules && res.rules.grid && res.rules.grid !== GRID) {
+        // the city itself is built per board size; rebuild into the new one and
+        // rejoin the run we just started (history catches the viewer up)
+        location.replace("/?perspective=" + perspective);
+        return;
+      }
       if (!res.joined) director.reset(perspective, "attract");
       // the hub now paces spectator runs at the source, so the browser must NOT
       // add a second beat on top (that is what turned live play into a broadcast)

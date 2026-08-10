@@ -24,8 +24,8 @@ import { createWorld } from "./world.js";
 import { createCameras } from "./cameras.js";
 
 export const CELL = 10;
-export const GRID = 7;
-const HALF = (GRID - 1) / 2; // 3
+import { GRID, HALF } from "./board.js";
+export { GRID };   // live binding: importers follow setGrid()
 
 export function cellToWorld(r, c, y = 0) {
   return new THREE.Vector3((c - HALF) * CELL, y, (r - HALF) * CELL);
