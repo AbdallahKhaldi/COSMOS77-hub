@@ -40,8 +40,8 @@ class Manager:
         """Start one subprocess, logging its output under the hub data dir."""
         self.settings.logs_dir.mkdir(parents=True, exist_ok=True)
         self._logs.append(out := open(self.settings.logs_dir / f"{name}-{tag}.log", "ab"))  # noqa: SIM115
-        proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)),
-                                env=seeds.spawn_env(vary_seed, name, dwell_ms), stdout=out,
+        env = seeds.spawn_env(vary_seed, name, dwell_ms, self.settings.public_url)
+        proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)), env=env, stdout=out,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         log.info("spawned %s (%s) pid=%d", name, tag, proc.pid)
         return proc

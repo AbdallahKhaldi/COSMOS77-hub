@@ -92,7 +92,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
         """App pages/JS/CSS revalidate every load; versioned vendor stays cached."""
         response = await call_next(request)
         path = request.url.path
-        app_asset = (path.startswith(("/static/js/", "/static/css/", "/static/fixtures/"))
+        app_asset = (path.startswith(("/static/js/", "/static/css/"))
                      or response.headers.get("content-type", "").startswith("text/html"))
         if app_asset and not path.startswith("/static/vendor/"):
             response.headers["Cache-Control"] = "no-cache, must-revalidate"

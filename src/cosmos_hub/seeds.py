@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import secrets
 
+from .config import ROLES
 from .runspec import RunSpec
 
 SPECTATOR_DWELL_MS = 700  # per view: roughly one followable move per second
@@ -26,8 +27,23 @@ def turn_delay_ms(spec: RunSpec) -> int | None:
     return spec.dwell_ms or SPECTATOR_DWELL_MS
 
 
+def public_mcp_url(public_url: str, role: str) -> str | None:
+    """The address an opponent can ACTUALLY reach this role's MCP server on.
+
+    An agent that cannot see the hub in front of it declares ``127.0.0.1:<port>``,
+    which is true of its own socket and useless to anyone else -- and that string is
+    sealed into the pre-game declaration a counted opponent keeps.  The hub knows its
+    own public origin and the proxy path it publishes each role on, so it states the
+    reachable one instead of the loopback one.
+    """
+    if role not in ROLES or not public_url:
+        return None
+    return f"{public_url.rstrip('/')}/{role}/mcp"
+
+
 def spawn_env(vary_seed: int | None = None, role: str = "",
-              turn_delay_ms: int | None = None) -> dict[str, str]:
+              turn_delay_ms: int | None = None,
+              public_url: str = "") -> dict[str, str]:
     """Hub env minus VIRTUAL_ENV; seed = per-role variety, dwell = spectator pacing."""
     env = dict(os.environ)
     env.pop("VIRTUAL_ENV", None)
@@ -35,4 +51,6 @@ def spawn_env(vary_seed: int | None = None, role: str = "",
         env["COSMOS_VARY_SEED"] = str(vary_seed + (1 if role == "thief" else 0))
     if turn_delay_ms:
         env["COSMOS_TURN_DELAY_MS"] = str(turn_delay_ms)
+    if (reachable := public_mcp_url(public_url, role)) is not None:
+        env["COSMOS_PUBLIC_MCP_URL"] = reachable
     return env

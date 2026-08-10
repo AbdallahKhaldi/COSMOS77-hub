@@ -104,7 +104,7 @@ export function initMenu({ page = "arena", onStartDemo = null } = {}) {
     if (act === "resume") closeMenu();
     else if (act === "demo") {
       if (page === "arena" && onStartDemo) { closeMenu(); onStartDemo(); }
-      else location.href = "/?demo=1"; // replay page: the demo lives on the arena
+      else location.href = "/"; // replay page: single player lives on the arena
     } else if (act === "toggle") toggleSub(item);
     // plain <a> items (LEAGUE / BRIEFING / OPS) navigate natively
   });
@@ -202,7 +202,6 @@ export function initMenu({ page = "arena", onStartDemo = null } = {}) {
     const box = $("runsList");
     if (!box) return;
     box.innerHTML = "";
-    box.appendChild(runRow({ rid: "demo-tape", meta: "real settled selfplay · 1 window", watch: "/replay/demo-tape?demo=1" }));
     try {
       const runs = await getJSON("/api/runs");
       // /api/runs answers the envelope {"runs":[...]}; accept a bare array too

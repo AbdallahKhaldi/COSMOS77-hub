@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cosmos_hub import argvs
+from cosmos_hub import argvs, seeds
 from cosmos_hub.runspec import RunSpec
 from tests.conftest import make_settings
 
@@ -88,3 +88,14 @@ def test_relay_parity_follows_the_gid_sort(tmp_path):
     ours_second = argvs.relay_argv(settings, _spec("SMNGRP05"))
     assert ours_second[ours_second.index("--odd-url") + 1].endswith(":8802/mcp")
     assert ours_second[ours_second.index("--even-url") + 1].endswith(":8801/mcp")
+
+
+def test_agents_declare_a_reachable_mcp_url_not_their_loopback_socket(tmp_path) -> None:
+    """A counted opponent keeps our declaration; 127.0.0.1 would be true and useless."""
+    settings = make_settings(tmp_path, public_url="https://arena.example")
+    for role, path in (("cop", "/cop/mcp"), ("thief", "/thief/mcp")):
+        env = seeds.spawn_env(role=role, public_url=settings.public_url)
+        assert env["COSMOS_PUBLIC_MCP_URL"] == "https://arena.example" + path
+    # the relay is not a declared agent endpoint, and no origin means no claim
+    assert "COSMOS_PUBLIC_MCP_URL" not in seeds.spawn_env(role="relay", public_url="https://x")
+    assert "COSMOS_PUBLIC_MCP_URL" not in seeds.spawn_env(role="cop", public_url="")

@@ -19,9 +19,10 @@ import { initMenu, wireCollapse } from "./menu.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const demo = params.get("demo") === "1";
 const runId = (location.pathname.match(/\/replay\/([^/?#]+)/) || [])[1] || null;
-const DOC_URL = demo || !runId ? "/static/fixtures/demo-replay.json" : "/api/replays/" + encodeURIComponent(runId);
+// No fixture fallback: a replay is a SETTLED run or it is nothing. A canned
+// document here read as a real game to anyone who opened the page.
+const DOC_URL = runId ? "/api/replays/" + encodeURIComponent(runId) : null;
 
 const STEP_SEC = 0.7; // seconds per frame at 1x
 const PRESET_KEY = "cosmos77.arena.preset";
@@ -371,7 +372,10 @@ function frame() {
 }
 
 /* ------------------------------------------------------------------ boot */
-fetch(DOC_URL, { headers: { Accept: "application/json" }, cache: "no-store" })
+if (!DOC_URL) {
+  $("metaPill").textContent = "no run selected — pick a settled game from MENU › Replays";
+}
+fetch(DOC_URL || "/api/replays/", { headers: { Accept: "application/json" }, cache: "no-store" })
   .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
   .then((d) => {
     doc = d;
@@ -424,7 +428,7 @@ fetch(DOC_URL, { headers: { Accept: "application/json" }, cache: "no-store" })
     frame();
   })
   .catch((e) => {
-    $("metaPill").textContent = "replay unavailable — " + e.message + (runId ? "" : " (no run id; try ?demo=1)");
+    $("metaPill").textContent = "replay unavailable — " + e.message;
     $("metaPill").className = "chip-sub mono warn";
     frame();
   });

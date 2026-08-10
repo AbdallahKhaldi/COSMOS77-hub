@@ -94,7 +94,7 @@
       <p class="sub tacnote">The opponent appears only as the labeled
       <b class="c-road">BELIEF</b> hologram — our posterior, never their truth.
       Want to see <b>both cars</b>? That's legal only for settled games —
-      <a href="/replay/demo-tape?demo=1" style="color:#ffd400">open the replay cinema ▶</a></p>
+      <a href="/league" style="color:#ffd400">open the replay cinema ▶</a></p>
     </div>
   </div>
 </div>
@@ -121,13 +121,13 @@
 </div>
 
 <!-- ========================= ESC / PAUSE MENU ============================ -->
-<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="pause menu" hidden>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="main menu" hidden>
   <div class="menu-veil" data-menu-close aria-hidden="true"></div>
   <div class="menu-inner">
     <a class="menu-brand" href="/">COSMOS<b>77</b> <span>ARENA</span></a>
-    <nav class="menu-list" id="menuList" aria-label="pause menu">
+    <nav class="menu-list" id="menuList" aria-label="main menu">
       <button class="menu-item" data-act="resume" id="menuResume" hidden>Resume</button>
-      <button class="menu-item" data-act="demo">Single Player — New Pursuit</button>
+      <button class="menu-item" data-act="demo">Single Player — Start Pursuit</button>
       <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mRules">Game Rules</button>
       <div class="menu-sub" id="mRules" hidden>
         <p class="sub" style="margin:0 0 10px">Single-player only — league games always run the
@@ -150,7 +150,7 @@
           <button class="btn btn--copy" id="rLeague">Reset to league rules</button>
         </div>
       </div>
-      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mChallenge">Challenge Us</button>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mChallenge">Multiplayer — Challenge a Team</button>
       <div class="menu-sub" id="mChallenge" hidden>
         <p class="kicker">Our standing endpoints</p>
         <div class="urlrow"><span class="tag cop">COP</span><code id="epCop">loading…</code>
@@ -200,13 +200,12 @@ import { createGhost, createScentLayer, createBarrierPool, createTrail } from "/
 import { createCruiser, createRunner } from "/static/js/vehicles.js";
 import { loadKenneyAssets } from "/static/js/assets.js";
 import { Timeline } from "/static/js/timeline.js";
-import { connectLive, connectDemo, postJSON } from "/static/js/net.js";
+import { connectLive, postJSON } from "/static/js/net.js";
 import { createDirector } from "/static/js/director.js";
 import { createHud } from "/static/js/hud.js";
 import { initMenu } from "/static/js/menu.js";
 
 const params = new URLSearchParams(location.search);
-const urlDemo = params.get("demo") === "1";
 let perspective = params.get("perspective") === "thief" ? "thief" : "police";
 
 /* bright golden-hour city by default; night is a persisted toggle */
@@ -260,49 +259,32 @@ function vehicleFor(p) {
   return v;                              // in CHASE this glides behind the new car (600 ms)
 }
 
-/* source: "live" (real WS) or "demo" (fixture through the same path).
-   ?demo=1 boots straight into the demo; the START button needs no query. */
-let source = urlDemo ? "demo" : "live";
-let demoDone = false;
+/* There is ONE source: the live socket over a real hub run. The recorded tape
+   that used to stand in here was indistinguishable from play to a visitor, so a
+   settled recording read as "the game" -- same route, same roadblocks, same
+   arrest, every load. An arena with no run now says so instead of performing. */
 
 const timeline = new Timeline(perspective);
 const hud = createHud({
   perspective,
   onPerspective(p) { switchPerspective(p); },
-  onMode(m) {
-    // demo tape finished and we slid back to attract: re-arm the live socket
-    if (m === "attract" && source === "demo" && demoDone && !urlDemo) {
-      demoDone = false;
-      setSource("live");
-    }
-  },
+  onMode() {},
 });
 const rig = { vehicle: vehicleFor(perspective), ghost, scent, barriers, trail };
 const director = createDirector({ arena, timeline, hud, rig });
 
 let socket = null;
-let demoResume = false; // perspective switches resume the shared tape; START rewinds
 function openSocket() {
-  const opts = {
+  socket = connectLive({
     perspective,
-    resume: demoResume,
     onEnvelope: (env) => director.onEnvelope(env),
-    onLink: (s) => { if (s === "demo-done") demoDone = true; hud.setLink(s); },
-  };
-  socket = source === "demo" ? connectDemo(opts) : connectLive(opts);
-  demoResume = false;
-}
-
-function setSource(next) {
-  if (socket) socket.close();
-  source = next;
-  hud.setSource(next);
-  openSocket();
+    onLink: (s) => hud.setLink(s),
+  });
 }
 
 /* THE button — try a REAL fresh selfplay on the server first (a new genuine
    game every press); fall back to the recorded tape when the lane is busy or
-   rate-limited. ?demo=1 keeps forcing the tape. */
+   rate-limited — an honest countdown, never a recording. */
 /* the sandbox rules the ESC panel currently shows (single player only) */
 const PACE_STEPS = [1600, 1200, 950, 700, 500, 340, 220]; // slow → brisk
 function chosenRules() {
@@ -320,14 +302,10 @@ function chosenRules() {
 }
 
 function startDemo() {
-  if (urlDemo) { startTape(); return; }
   hud.sysLine("// requesting a fresh live pursuit…");
   postJSON("/api/demo", chosenRules())
     .then(function (res) {
-      demoDone = false;
       if (!res.joined) director.reset(perspective, "attract");
-      source = "live";
-      hud.setSource("live");
       // the hub now paces spectator runs at the source, so the browser must NOT
       // add a second beat on top (that is what turned live play into a broadcast)
       director.setPace(res.server_paced ? 0 : 650);
@@ -354,16 +332,6 @@ function startDemo() {
     });
 }
 
-function startTape() {
-  if (socket) socket.close();
-  director.setPace(0); // the tape is already paced by the fixture clock
-  demoDone = false;
-  demoResume = false; // the button always rewinds the tape
-  director.reset(perspective, "attract");
-  source = "demo";
-  hud.setSource("demo");
-  openSocket();
-}
 
 function switchPerspective(p) {
   if (socket) socket.close();       // never two perspectives at once
@@ -372,7 +340,6 @@ function switchPerspective(p) {
   const held = director.state && director.state.view;
   const moment = held && typeof held.step === "number"
     ? { sub_game: held.sub_game, step: held.step } : null;
-  demoResume = true;                // same tape moment, other agent's truth
   perspective = p;
   const wasLive = director.mode === "live";
   rig.vehicle = vehicleFor(p);      // CHASE lands behind the newly selected car
@@ -434,7 +401,7 @@ if (new URLSearchParams(location.search).has("debug")) {
 }());
 
 hud.wireChrome();
-hud.setSource(source);
+hud.setSource("live");
 hud.setMode("attract");
 hud.sysLine("// comms channel open — awaiting engagement");
 document.getElementById("tglScent").addEventListener("scent-toggle", (e) => scent.setVisible(e.detail));
@@ -451,7 +418,10 @@ document.querySelectorAll("#dnSeg button").forEach((b) => {
 applyPreset(preset);
 director.start();
 openSocket();
-initMenu({ page: "arena", onStartDemo: startDemo });
+const mainMenu = initMenu({ page: "arena", onStartDemo: startDemo });
+// The arena opens on its menu. It used to open by PLAYING -- and what it played
+// was a recording, which is why every visit looked like the same game.
+if (mainMenu) mainMenu.open();
 </script>
 </body>
 </html>
