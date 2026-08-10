@@ -92,3 +92,26 @@ def test_snapshot_after_run_end_carries_no_dead_run_view(client):
     with client.websocket_connect("/ws/live?perspective=police") as ws:
         clean = ws.receive_json()
     assert clean["type"] == "snapshot" and "view" not in clean["payload"]
+
+
+def test_a_settled_run_stops_being_replayed_to_brand_new_viewers() -> None:
+    """History exists for the START presser's socket, not for every later visitor.
+
+    Retained forever it turned each page load into a performance of the last finished
+    game, labelled LIVE — the arena playing a recording of itself.
+    """
+    from cosmos_hub import broadcast
+
+    caster = broadcast.Broadcaster()
+    caster._publish({"perspective": "police", "type": "view", "payload": {"step": 1}})
+    assert caster.history_for("police"), "a live run must reach a late-connecting viewer"
+
+    caster.mark_settled()
+    assert caster.history_for("police"), "within the grace window it is still news"
+
+    caster._settled_at -= broadcast.SETTLED_GRACE_S + 1  # age it past the window
+    assert caster.history_for("police") == [], "a stale run must never replay as live"
+
+    caster.clear_history()
+    caster._publish({"perspective": "police", "type": "view", "payload": {"step": 1}})
+    assert caster.history_for("police"), "a NEW run replays again from scratch"

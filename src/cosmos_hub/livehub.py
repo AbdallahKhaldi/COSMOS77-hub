@@ -41,6 +41,7 @@ class LiveHub:
             return
         if event in ("run_ended", "run_stopped"):
             self.log.emit_both("status", {"state": "standing", **payload})
+            self.broadcaster.mark_settled()  # replayable to late viewers only briefly
             self.request_stop()
             self._reset_standing(payload)
             if self.on_settled is not None:
