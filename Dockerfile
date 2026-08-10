@@ -4,8 +4,8 @@
 
 ARG COP_REPO_URL=https://github.com/AbdallahKhaldi/COSMOS77-cop.git
 ARG THIEF_REPO_URL=https://github.com/AbdallahKhaldi/COSMOS77-thief.git
-ARG COP_REF=974f7b9970971d6d1ef1cdf36604741f845e7840
-ARG THIEF_REF=1b7f04ebc7b6c49ae6730363e14d41a5f232fedf
+ARG COP_REF=598d44edd15e97ddd9543c2ad139913de4875ca9
+ARG THIEF_REF=64c7a1a32472fef2495495a91c58891cc88f89c4
 # Optional: a read-only token for private repos, e.g. GIT_AUTH="x-access-token:<PAT>@"
 ARG GIT_AUTH=""
 
