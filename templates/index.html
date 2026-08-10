@@ -434,9 +434,10 @@ applyPreset(preset);
 director.start();
 openSocket();
 const mainMenu = initMenu({ page: "arena", onStartDemo: startDemo });
-// The arena opens on its menu. It used to open by PLAYING -- and what it played
-// was a recording, which is why every visit looked like the same game.
-if (mainMenu) mainMenu.open();
+// Open on the menu when the arena is IDLE. If a pursuit is already running --
+// a visitor arriving mid-game, or our own rebuild into a bigger board -- attach
+// and watch it instead of covering it with a menu (ESC is always there).
+if (mainMenu && !boot.run) mainMenu.open();
 </script>
 </body>
 </html>

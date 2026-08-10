@@ -117,7 +117,9 @@ export function createHud({ perspective, onPerspective, onMode }) {
   setPerspectiveChrome(perspective);
 
   function renderChip() {
-    if (mode === "live") {
+    // "live" needs a RUN behind it: mode alone once printed "● LIVE — LOCAL TRUTH"
+    // directly above "attract mode — no run live", which is a chip arguing with itself.
+    if (mode === "live" && runId) {
       els.statustext.textContent = source === "demo" ? "DEMO REEL" : "● LIVE — LOCAL TRUTH";
       els.dot.className = "dot live";
     } else {
