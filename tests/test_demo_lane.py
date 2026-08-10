@@ -30,8 +30,11 @@ def test_demo_starts_a_one_window_selfplay(app_client: Any) -> None:
     finally:
         manager.start_run = original
     assert response.status_code == 200
-    assert response.json() == {"run_id": "selfplay-test-0001", "watch": "live",
-                               "joined": False, "server_paced": True}
+    body = response.json()
+    assert body["run_id"] == "selfplay-test-0001"
+    assert body["watch"] == "live" and body["joined"] is False
+    assert body["server_paced"] is True
+    assert body["rules"]["windows"] == 1  # the rules actually used, echoed back
     spec, source = calls[0]
     assert (spec.kind, spec.windows, source) == ("selfplay", 1, "demo")
     assert spec.their_cop_url is None and spec.their_thief_url is None
@@ -101,6 +104,29 @@ def test_demo_busy_maps_to_409(app_client: Any) -> None:
     finally:
         manager.start_run = original
     assert response.status_code == 409
+
+
+def test_sandbox_rules_are_clamped_and_never_touch_league_play(app_client: Any) -> None:
+    """Visitors reshape single player only, inside hard bands; league stays the constitution."""
+    from cosmos_hub import custom
+
+    base = custom.league_config(app_client.app.state.settings)
+    # Appendix F: a MINIMUM parameter may be raised, never lowered — an attempt to
+    # weaken the game clamps back up to the constitution's floor.
+    wild = custom.wanted({"windows": 99, "grid": 40, "max_moves": 5,
+                          "max_barriers": -3, "dwell_ms": 10}, base)
+    assert wild == {"windows": 6, "grid": 11, "max_moves": 35, "max_barriers": 14,
+                    "dwell_ms": 120, "_num_games": 6}
+    junk = custom.wanted({"grid": "huge", "max_moves": None}, base)
+    assert junk["grid"] == 7 and junk["max_moves"] == 35  # fall back to the constitution
+    cfg = custom.build_config(base, wild)
+    assert cfg["board_and_agents"]["grid_size"] == 11
+    assert cfg["board_and_agents"]["thief_start"] == [5, 5]  # centre, always on the board
+    assert cfg["movement_and_barriers"]["survival_threshold"] == 35  # tracks max_moves
+    assert cfg["scoring"] == base["scoring"], "FIXED values are never offered or changed"
+    assert cfg["pheromones"] == base["pheromones"]
+    assert base["board_and_agents"]["grid_size"] == 7, "the constitution is never mutated"
+    assert custom.is_default(custom.wanted({}, base), base), "no overrides = league rules"
 
 
 def test_spectator_runs_are_paced_by_the_server_not_the_browser(app_client: Any) -> None:

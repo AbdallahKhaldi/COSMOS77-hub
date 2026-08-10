@@ -87,6 +87,8 @@ def run_argv(role: str, spec: RunSpec, settings: Settings) -> list[str]:
         "--out", str(out),
         "--events",
     ]
+    if spec.config_path:
+        argv += ["--config", spec.config_path]
     if spec.scent_model:
         argv += ["--scent-model", spec.scent_model]
     if not external:

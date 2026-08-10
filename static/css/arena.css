@@ -643,3 +643,10 @@ details.legacy .scoretab { margin-top: 10px; }
   .hero-start:hover { transform: none; }
   .menu-item:hover, .menu-item:focus-visible { transform: none; }
 }
+
+/* ---- sandbox rule sliders (ESC menu → Game Rules) ---- */
+.rulegrid { display: grid; grid-template-columns: 1fr; gap: 4px 14px; }
+@media (min-width: 720px) { .rulegrid { grid-template-columns: 210px 1fr; align-items: center; } }
+.rulegrid .f { margin: 0; display: flex; justify-content: space-between; gap: 10px; }
+.rulegrid .f b { color: var(--road); font-family: var(--mono); }
+.rulegrid input[type="range"] { width: 100%; accent-color: var(--road); }

@@ -62,6 +62,7 @@ export function initMenu({ page = "arena", onStartDemo = null } = {}) {
   }
 
   /* ------------------------------ keyboard ------------------------------ */
+  document.addEventListener("cosmos:close-menu", closeMenu);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();

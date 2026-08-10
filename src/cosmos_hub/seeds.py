@@ -21,7 +21,9 @@ def run_seed(spec: RunSpec) -> int | None:
 
 def turn_delay_ms(spec: RunSpec) -> int | None:
     """Spectator dwell for public selfplay demos; league runs always play full speed."""
-    return SPECTATOR_DWELL_MS if spec.kind == "selfplay" else None
+    if spec.kind != "selfplay":
+        return None
+    return spec.dwell_ms or SPECTATOR_DWELL_MS
 
 
 def spawn_env(vary_seed: int | None = None, role: str = "",

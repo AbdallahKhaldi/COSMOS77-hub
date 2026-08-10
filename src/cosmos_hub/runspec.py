@@ -39,6 +39,8 @@ class RunSpec:
     scent_model: str | None = None
     windows: int = 6
     out_stamp: str = ""
+    config_path: str | None = None   # sandbox rules (single player only)
+    dwell_ms: int | None = None      # spectator pacing for this run
 
     def peer_url_for(self, role: str, own_ports: dict[str, int]) -> str:
         """URL *role*'s agent dials: our cop dials their thief and vice versa."""

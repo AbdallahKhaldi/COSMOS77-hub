@@ -128,6 +128,28 @@
     <nav class="menu-list" id="menuList" aria-label="pause menu">
       <button class="menu-item" data-act="resume" id="menuResume" hidden>Resume</button>
       <button class="menu-item" data-act="demo">Single Player — New Pursuit</button>
+      <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mRules">Game Rules</button>
+      <div class="menu-sub" id="mRules" hidden>
+        <p class="sub" style="margin:0 0 10px">Single-player only — league games always run the
+          agreed constitution. Appendix F lets these be <b>raised, never lowered</b>, and scoring,
+          the scent field and the move set are fixed for everyone, so they are not offered.</p>
+        <div class="rulegrid">
+          <label class="f" for="rRounds">Rounds <b id="vRounds">1</b></label>
+          <input type="range" id="rRounds" min="1" max="6" step="1" value="1">
+          <label class="f" for="rGrid">Board <b id="vGrid">7×7</b></label>
+          <input type="range" id="rGrid" min="7" max="11" step="1" value="7">
+          <label class="f" for="rMoves">Moves per round <b id="vMoves">35</b></label>
+          <input type="range" id="rMoves" min="35" max="80" step="5" value="35">
+          <label class="f" for="rBarriers">Roadblocks <b id="vBarriers">14</b></label>
+          <input type="range" id="rBarriers" min="14" max="30" step="1" value="14">
+          <label class="f" for="rSpeed">Pace <b id="vSpeed">1.0×</b></label>
+          <input type="range" id="rSpeed" min="0" max="6" step="1" value="3">
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn--engage" id="rStart">▶ Play these rules</button>
+          <button class="btn btn--copy" id="rLeague">Reset to league rules</button>
+        </div>
+      </div>
       <button class="menu-item" data-act="toggle" aria-expanded="false" aria-controls="mChallenge">Challenge Us</button>
       <div class="menu-sub" id="mChallenge" hidden>
         <p class="kicker">Our standing endpoints</p>
@@ -281,10 +303,26 @@ function setSource(next) {
 /* THE button — try a REAL fresh selfplay on the server first (a new genuine
    game every press); fall back to the recorded tape when the lane is busy or
    rate-limited. ?demo=1 keeps forcing the tape. */
+/* the sandbox rules the ESC panel currently shows (single player only) */
+const PACE_STEPS = [1600, 1200, 950, 700, 500, 340, 220]; // slow → brisk
+function chosenRules() {
+  const num = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el ? Number(el.value) : fallback;
+  };
+  return {
+    windows: num("rRounds", 1),
+    grid: num("rGrid", 7),
+    max_moves: num("rMoves", 35),
+    max_barriers: num("rBarriers", 14),
+    dwell_ms: PACE_STEPS[num("rSpeed", 3)] || 700,
+  };
+}
+
 function startDemo() {
   if (urlDemo) { startTape(); return; }
   hud.sysLine("// requesting a fresh live pursuit…");
-  postJSON("/api/demo", {})
+  postJSON("/api/demo", chosenRules())
     .then(function (res) {
       demoDone = false;
       if (!res.joined) director.reset(perspective, "attract");
@@ -294,9 +332,12 @@ function startDemo() {
       // add a second beat on top (that is what turned live play into a broadcast)
       director.setPace(res.server_paced ? 0 : 650);
       openSocket(); // the live feed streams the run (snapshot catches us up if joining)
+      const r = res.rules;
       hud.sysLine(res.joined
         ? "// JOINED — a live pursuit is already in progress (" + res.run_id + ")"
-        : "// LIVE — fresh pursuit " + res.run_id + " (different game every press)");
+        : "// LIVE — fresh pursuit · " + (r ? r.grid + "×" + r.grid + " · " + r.windows
+            + (r.windows > 1 ? " rounds" : " round") + " · " + r.max_moves + " moves · "
+            + r.max_barriers + " roadblocks" : res.run_id));
     })
     .catch(function (e) {
       var why = (e && e.data && e.data.detail) ? String(e.data.detail) : "engine busy";
@@ -359,6 +400,38 @@ if (new URLSearchParams(location.search).has("debug")) {
     switchTo(p) { switchPerspective(p); },
   };
 }
+
+/* ---- sandbox rules panel ---- */
+(function wireRules() {
+  const LEAGUE = { rRounds: 1, rGrid: 7, rMoves: 35, rBarriers: 14, rSpeed: 3 };
+  const paint = () => {
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    const val = (id) => Number((document.getElementById(id) || {}).value);
+    set("vRounds", val("rRounds"));
+    set("vGrid", val("rGrid") + "×" + val("rGrid"));
+    set("vMoves", val("rMoves"));
+    set("vBarriers", val("rBarriers"));
+    set("vSpeed", (700 / PACE_STEPS[val("rSpeed")]).toFixed(1) + "×");
+  };
+  Object.keys(LEAGUE).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", paint);
+  });
+  const league = document.getElementById("rLeague");
+  if (league) league.addEventListener("click", () => {
+    Object.entries(LEAGUE).forEach(([id, v]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = String(v);
+    });
+    paint();
+  });
+  const play = document.getElementById("rStart");
+  if (play) play.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("cosmos:close-menu"));
+    startDemo();
+  });
+  paint();
+}());
 
 hud.wireChrome();
 hud.setSource(source);
