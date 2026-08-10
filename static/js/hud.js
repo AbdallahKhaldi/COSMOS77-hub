@@ -8,7 +8,7 @@
    with commit-hash seals. The ESC menu lives in menu.js. Local truth only —
    the heatmap renders OUR posterior, never an opponent position. */
 
-import { GRID, gridFromMap, windowEndInfo, seriesVerdict } from "./timeline.js";
+import { GRID, gridFromMap, windowEndInfo, seriesVerdict, hintProvenance } from "./timeline.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -252,6 +252,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
       const p = env.payload || {};
       slam("SERIES COMPLETE", "series", `${state.scores.us} – ${state.scores.them} · ${seriesVerdict(p)}`);
       sysLine("// series settled — replay unlocked");
+      sysLine("// " + hintProvenance(p));
     } else if (env.type === "status" && env.payload && env.payload.line) {
       sysLine("// " + env.payload.line);
     } else if (env.type === "status" && env.payload && env.payload.state) {

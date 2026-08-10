@@ -145,6 +145,22 @@ export function seriesVerdict(p) {
   return "settled" + sealed;
 }
 
+/* Where this game's trash-talk actually came from, in the viewer's own words.
+
+   The move is ALWAYS python (rule 25 / table 21); the LLM only ever writes hint
+   text.  But "is the model really being called, or is it falling back to the
+   zero-token templates?" was previously answerable only by opening the Gemini
+   console, so the sealed token total is stated here instead: tokens burned means
+   the model spoke, zero means the templates did. */
+export function hintProvenance(p) {
+  const fin = (p && p.final_result) || {};
+  const tokens = (fin.tokens_total_series || {})["cosmos77"];
+  if (typeof tokens !== "number") return "hint provenance unreported";
+  return tokens > 0
+    ? `hints: live LLM · ${tokens.toLocaleString()} tokens this series`
+    : "hints: zero-token templates (no LLM call this series)";
+}
+
 /* The reducer. Returns a NEW state; never mutates the old one. */
 export function applyEvent(state, env) {
   if (!env || typeof env !== "object") return state;

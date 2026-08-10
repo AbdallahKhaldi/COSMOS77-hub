@@ -11,6 +11,8 @@ Every field is clamped here; nothing a visitor sends reaches a config unchecked.
 from __future__ import annotations
 
 import json
+import random
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -55,14 +57,36 @@ def wanted(body: dict[str, Any], base: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def build_config(base: dict[str, Any], rules: dict[str, int]) -> dict[str, Any]:
-    """The constitution with the sandbox overrides applied and the starts made legal."""
+def start_cells(grid: int, rng: random.Random) -> tuple[list[int], list[int]]:
+    """Two legal opening cells, at least ``grid - 1`` apart, drawn fresh per game.
+
+    The constitution opens the cop in a corner and the thief dead centre.  That is a
+    fine duel -- but it is the SAME duel every time, and with both sides running our
+    own deterministic Python it produced the same chase and the same 5-10 survival on
+    every press.  Start cells are not an Appendix F FIXED parameter (those are the
+    scoring, the pheromone field, the move set, the axis and the agent count), and
+    both of our agents load this one generated file, so the pre-game signature still
+    matches on the wire.  The floor is the constitution's OWN opening distance --
+    ``|0-3| + |0-3| == 6`` on a 7x7, i.e. ``grid - 1`` -- so a varied game is never a
+    softer one for either side.
+    """
+    cells = [[row, col] for row in range(grid) for col in range(grid)]
+    gap = grid - 1
+    pairs = [(cop, thief) for cop in cells for thief in cells
+             if abs(cop[0] - thief[0]) + abs(cop[1] - thief[1]) >= gap]
+    return rng.choice(pairs)
+
+
+def build_config(base: dict[str, Any], rules: dict[str, int],
+                 rng: random.Random | None = None) -> dict[str, Any]:
+    """The constitution with the sandbox overrides applied and fresh legal starts."""
     cfg = json.loads(json.dumps(base))  # deep copy: never mutate the agreed file
     grid = rules["grid"]
     board = cfg["board_and_agents"]
     board["grid_size"] = grid
-    board["cop_start"] = [0, 0]
-    board["thief_start"] = [grid // 2, grid // 2]  # centre, always on the board
+    board["cop_start"], board["thief_start"] = start_cells(
+        grid, rng if rng is not None else random.Random(secrets.randbits(64))
+    )
     movement = cfg["movement_and_barriers"]
     movement["max_moves"] = rules["max_moves"]
     movement["survival_threshold"] = rules["max_moves"]
@@ -70,14 +94,6 @@ def build_config(base: dict[str, Any], rules: dict[str, int]) -> dict[str, Any]:
     cfg["network_and_league"]["num_games"] = rules["windows"]
     cfg["agreed_between"] = ["cosmos77", "cosmos77-mirror"]
     return cfg
-
-
-def is_default(rules: dict[str, int], base: dict[str, Any]) -> bool:
-    """True when the sandbox asks for nothing the constitution does not already say."""
-    board, movement = base["board_and_agents"], base["movement_and_barriers"]
-    return (rules["grid"] == board["grid_size"]
-            and rules["max_moves"] == movement["max_moves"]
-            and rules["max_barriers"] == movement["max_barriers"])
 
 
 def write_config(settings: Settings, stamp: str, cfg: dict[str, Any]) -> Path:

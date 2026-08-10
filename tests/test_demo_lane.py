@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from typing import Any
 
 import pytest
@@ -119,14 +120,39 @@ def test_sandbox_rules_are_clamped_and_never_touch_league_play(app_client: Any) 
                     "dwell_ms": 120, "_num_games": 6}
     junk = custom.wanted({"grid": "huge", "max_moves": None}, base)
     assert junk["grid"] == 7 and junk["max_moves"] == 35  # fall back to the constitution
-    cfg = custom.build_config(base, wild)
+    cfg = custom.build_config(base, wild, random.Random(7))
     assert cfg["board_and_agents"]["grid_size"] == 11
-    assert cfg["board_and_agents"]["thief_start"] == [5, 5]  # centre, always on the board
     assert cfg["movement_and_barriers"]["survival_threshold"] == 35  # tracks max_moves
     assert cfg["scoring"] == base["scoring"], "FIXED values are never offered or changed"
     assert cfg["pheromones"] == base["pheromones"]
     assert base["board_and_agents"]["grid_size"] == 7, "the constitution is never mutated"
-    assert custom.is_default(custom.wanted({}, base), base), "no overrides = league rules"
+
+
+def test_start_cells_stay_on_the_board_and_never_open_softer_than_the_constitution():
+    """Appendix F floors are about difficulty; a varied opening must not lower it."""
+    from cosmos_hub import custom
+
+    for grid in (7, 9, 11):
+        rng = random.Random(grid)
+        for _ in range(60):
+            cop, thief = custom.start_cells(grid, rng)
+            assert all(0 <= axis < grid for axis in (*cop, *thief)), (grid, cop, thief)
+            gap = abs(cop[0] - thief[0]) + abs(cop[1] - thief[1])
+            assert gap >= grid - 1, f"{cop} vs {thief} opens closer than the constitution"
+
+
+def test_two_presses_of_the_same_rules_are_two_different_scenarios(app_client: Any) -> None:
+    """The bug this exists to kill: identical rules used to mean an identical game."""
+    from cosmos_hub import custom
+
+    base = custom.league_config(app_client.app.state.settings)
+    rules = custom.wanted({}, base)
+    openings = {
+        (tuple(cfg["board_and_agents"]["cop_start"]),
+         tuple(cfg["board_and_agents"]["thief_start"]))
+        for cfg in (custom.build_config(base, rules) for _ in range(25))
+    }
+    assert len(openings) > 1, "every press drew the same opening"
 
 
 def test_spectator_runs_are_paced_by_the_server_not_the_browser(app_client: Any) -> None:

@@ -50,10 +50,11 @@ async def start_demo(request: Request) -> dict[str, object]:
     base = custom.league_config(settings)
     rules = custom.wanted(body, base)
     stamp = fresh_stamp("selfplay")
-    config_path = None
-    if not custom.is_default(rules, base):
-        config_path = str(custom.write_config(settings, stamp,
-                                              custom.build_config(base, rules)))
+    # ALWAYS generate: even an unchanged rule set gets fresh start cells, because the
+    # constitution's fixed corner-vs-centre opening is what made every press replay the
+    # same chase.  League play never comes through here (kind is pinned to selfplay).
+    config_path = str(custom.write_config(settings, stamp,
+                                          custom.build_config(base, rules)))
     spec = RunSpec(kind="selfplay", opponent_gid="cosmos77-mirror",
                    windows=rules["windows"], out_stamp=stamp,
                    config_path=config_path, dwell_ms=rules["dwell_ms"])
