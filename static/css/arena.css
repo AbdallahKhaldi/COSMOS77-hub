@@ -470,6 +470,11 @@ body.game .stage canvas { display: block; width: 100%; height: 100%; }
   padding: 4px 14px; border-left: 5px solid transparent;
   transition: transform .16s ease, color .16s ease, border-color .16s ease;
 }
+/* `.menu-item{display:block}` is an author rule and outranks the UA sheet's
+   `[hidden]{display:none}`, so the hidden attribute alone never hid an item --
+   RESUME sat in the menu with nothing to resume. Restore the attribute. */
+.menu-item[hidden] { display: none; }
+
 .menu-item:hover, .menu-item:focus-visible {
   color: var(--road); border-left-color: var(--road); transform: translateX(12px);
   outline: none;
