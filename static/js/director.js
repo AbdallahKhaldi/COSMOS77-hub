@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import { cellToWorld } from "./scene.js";
 import { REDUCED } from "./entities.js";
-import { applyEvent, initialState, gridFromMap } from "./timeline.js";
+import { applyEvent, initialState, gridFromMap, GRID } from "./timeline.js";
 import { drainDecision, INSTANT_CAP } from "./pacing.js";
 
 const MOVE_MS = 620;   // a followable drive, not a dart
@@ -128,8 +128,8 @@ export function createDirector({ arena, timeline, hud, rig }) {
       paintOverlay(next);
     } else if (env.type === "window_end") {
       rig.barriers.reset();
-      rig.ghost.setPosterior(new Float64Array(49), "none");
-      rig.scent.setTargets(new Float64Array(49));
+      rig.ghost.setPosterior(new Float64Array(GRID * GRID), "none");
+      rig.scent.setTargets(new Float64Array(GRID * GRID));
       paintOverlay(next);
     } else if (env.type === "snapshot") {
       const v = next.view;
@@ -269,8 +269,8 @@ export function createDirector({ arena, timeline, hud, rig }) {
       ffTarget = null;
       state = initialState(perspective);
       rig.barriers.reset();
-      rig.ghost.setPosterior(new Float64Array(49), "none");
-      rig.scent.setTargets(new Float64Array(49));
+      rig.ghost.setPosterior(new Float64Array(GRID * GRID), "none");
+      rig.scent.setTargets(new Float64Array(GRID * GRID));
       rig.trail.setTint(perspective === "thief" ? 0xff8a1e : 0x2b7fff);
       arena.overlay.clear();
       arena.overlay.commit();

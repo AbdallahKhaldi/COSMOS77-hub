@@ -12,6 +12,7 @@ REPO = Path(__file__).resolve().parents[1]
 SUITES = {
     "pacing.test.mjs": "ALL 9 PACING PINS HOLD",
     "barricade.test.mjs": "ALL 4 BARRICADE PINS HOLD",
+    "timeline.test.mjs": "ALL 4 TIMELINE PINS HOLD",
 }
 
 

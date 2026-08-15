@@ -16,7 +16,8 @@
    socket legitimately sees gaps — so ordering is a monotonic filter only,
    never gap-waiting. */
 
-export { GRID } from "./board.js";  // live binding, never a frozen copy
+import { GRID } from "./board.js";  // live binding (setGrid propagates)
+export { GRID };
 export const WINDOWS_DEFAULT = 6;
 
 export function initialState(perspective = "police") {

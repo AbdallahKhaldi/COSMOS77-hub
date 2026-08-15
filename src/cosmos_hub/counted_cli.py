@@ -1,22 +1,19 @@
 """``cosmos-hub-counted`` — the ONLY way a counted run starts on the hub (SSH terminal).
 
-No web request can reach this: it is a console script that refuses non-TTY stdin,
-prints the exact armed commands, and executes them only after the operator types
-``ARM COUNTED``.  While it runs, a hold-file keeps the hub manager off the agent
-ports; because the manager also stands its relay down, THIS CLI spawns the
-window-parity relay itself (odd/even matched to the gid-sort split), so the public
-single URL ``/mcp`` keeps working for the opponent — or hand them the per-role URLs
-printed below, matched to the same parity.  The series is ONE role-alternating
-6-sub-game game: both agents share one absolute ``--out`` on the data volume, split
-the windows by parity (``--windows-spec``) and exactly one closes.  Reporting stays
-a separate deliberate step: ONE report against the single shared result, printed,
-never auto-sent.
+No web request reaches this: a console script that refuses non-TTY stdin, requires
+``COSMOS_LEAGUE_COUNTED`` in the session (the config half — no peer.toml on the hub),
+prints the exact armed commands, and executes only after the operator types
+``ARM COUNTED``.  A hold-file stands the manager down; the CLI spawns the parity
+relay itself so the public ``/mcp`` keeps working for the opponent.  One series,
+shared ``--out`` on the volume, windows split by parity, exactly one closer.
+Reporting stays a separate deliberate step: printed, never auto-sent.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import shlex
 import socket
 import subprocess
@@ -71,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     if not GID_RE.match(args.opponent_gid):
         print("REFUSED: opponent gid must match [A-Za-z0-9._-]{1,64}", file=sys.stderr)
         return 2
+    if os.environ.get("COSMOS_LEAGUE_COUNTED", "").lower() not in ("1", "true", "yes"):
+        print("REFUSED: export COSMOS_LEAGUE_COUNTED=true in THIS SSH session first — no "
+              "peer.toml on the hub, so the env IS the config half (rules 37-38).",
+              file=sys.stderr)
+        return 2
     settings = config.load()
     spec = RunSpec(
         kind="counted", opponent_gid=args.opponent_gid,
@@ -88,9 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Topology (gid sort {sorted([settings.standing_gids, spec.opponent_gid])}): "
           f"our cop plays windows [{split['cop'] or '-'}], our thief [{split['thief'] or '-'}]; "
           f"the {argvs.closer_role(spec, settings)} closes; shared out {shared_out}")
-    print("Opponent URLs: single /mcp (parity relay, spawned below) or per-role "
-          "/cop/mcp + /thief/mcp matched to the windows above.")
-    print("Prerequisite: config counted=true in both repos (double arming, rules 37-38).")
+    print("Opponent URLs: single /mcp (parity relay) or per-role /cop/mcp + /thief/mcp; "
+          "config half = COSMOS_LEAGUE_COUNTED (this session), --counted is the other.")
     try:
         typed = input(f'Type "{CONFIRMATION}" to proceed: ')
     except EOFError:
@@ -115,8 +116,10 @@ def main(argv: list[str] | None = None) -> int:
                                  cwd=str(settings.repo(config.RELAY)),
                                  env=seeds.spawn_env(ledger_file=str(settings.ledger_file)))
         procs = [
-            subprocess.Popen(commands[role], cwd=str(settings.repo(role)),
-                             env=seeds.spawn_env(ledger_file=str(settings.ledger_file)))
+            subprocess.Popen(
+                commands[role], cwd=str(settings.repo(role)),
+                env=seeds.spawn_env(role=role, public_url=settings.public_url,
+                                    ledger_file=str(settings.ledger_file)))
             for role in roles
         ]
         rcs = [proc.wait() for proc in procs]
@@ -139,8 +142,7 @@ def main(argv: list[str] | None = None) -> int:
           f"  $ COSMOS_LEDGER_FILE={settings.ledger_file} \\\n"
           f"    uv run cosmos-cop report {shared_out}/result_<gid>.json"
           " --counted --send")
-    print("  (COSMOS_LEDGER_FILE keeps the rule-52 counters reading the volume ledger"
-          " the series just advanced.)")
+    print("  (COSMOS_LEDGER_FILE keeps rule-52 counters on the volume ledger.)")
     return max(rcs)
 
 

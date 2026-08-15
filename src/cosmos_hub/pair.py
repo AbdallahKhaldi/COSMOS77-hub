@@ -61,7 +61,11 @@ def build_packet_subprocess(settings: Settings, opponent: str,
 
 @router.post("/api/pair")
 async def post_pair(request: Request) -> dict[str, Any]:
-    """Public pairing generator for the /docs page."""
+    """Public pairing generator, on the shared challenge budget.
+
+    Every call shells a subprocess, so an ungated loop is a free fork bomb.
+    """
+    request.app.state.challenge_gate.admit()  # 429 on cooldown/quota
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(422, "body must be a JSON object")

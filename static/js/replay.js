@@ -1,6 +1,6 @@
 /* replay.js — the REPLAY CINEMA (ARENA V3). Settled games only: bird's-eye is
    LEGAL here (positions are mutually revealed by the audit protocol) and only
-   here. Loads GET /api/replays/{run_id} — or the demo fixture with ?demo=1 —
+   here. Loads GET /api/replays/{run_id} —
    and drives the same scene/world/vehicles stack as the live arena: both
    vehicles on TRUE paths (with headings, so CHASE works), barriers as they
    landed, per-step Verified OK / TAMPERED badge, window selector, 0.5/1/4/16x
@@ -392,7 +392,7 @@ fetch(DOC_URL || "/api/replays/", { headers: { Accept: "application/json" }, cac
     metaInfo.gidA = meta.gid_a || gids[0] || "us";
     metaInfo.gidB = meta.gid_b || gids[1] || "them";
     $("metaPill").textContent =
-      (demo || !runId ? "demo fixture · " : "") +
+      (!runId ? "no run · " : "") +
       `${metaInfo.gidA} vs ${metaInfo.gidB} · ${frames.length} frames`;
     $("verdictLine").textContent = "series verdict: " + ((d.verify && d.verify.verdict) || "?");
     const tbody = $("scoreTable").querySelector("tbody");

@@ -324,6 +324,7 @@ function startDemo() {
       // the hub now paces spectator runs at the source, so the browser must NOT
       // add a second beat on top (that is what turned live play into a broadcast)
       director.setPace(res.server_paced ? 0 : 650);
+      if (socket) socket.close(); // never stack streams: one socket per view
       openSocket(); // the live feed streams the run (snapshot catches us up if joining)
       const r = res.rules;
       hud.sysLine(res.joined

@@ -10,6 +10,7 @@ import pytest
 from starlette.testclient import TestClient
 
 import cosmos_hub.manager as manager_mod
+import cosmos_hub.procs as procs_mod
 from cosmos_hub import config
 from cosmos_hub.app import create_app
 from cosmos_hub.frames import canonical_str
@@ -91,7 +92,7 @@ def fake_procs(monkeypatch):
         proc.rc = -sig
 
     monkeypatch.setattr(manager_mod.subprocess, "Popen", DummyProc)
-    monkeypatch.setattr(manager_mod.os, "killpg", fake_killpg)
+    monkeypatch.setattr(procs_mod.os, "killpg", fake_killpg)
     return DummyProc
 
 

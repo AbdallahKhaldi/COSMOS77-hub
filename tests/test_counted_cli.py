@@ -16,6 +16,7 @@ ARGS = ["--opponent-gid", "rival",
 @pytest.fixture
 def cli_env(tmp_path, monkeypatch):
     settings = make_settings(tmp_path)
+    monkeypatch.setenv("COSMOS_LEAGUE_COUNTED", "true")  # the SSH session's config half
     monkeypatch.setattr(counted_cli.config, "load", lambda env=None: settings)
     monkeypatch.setattr(counted_cli, "_wait_ports_free", lambda ports, deadline: True)
     DummyProc.REGISTRY.clear()
@@ -106,3 +107,12 @@ def test_armed_topology_parity_split_shared_out_single_closer(cli_env, monkeypat
 def test_bad_gid_refused(cli_env, monkeypatch):
     _tty(monkeypatch, True)
     assert counted_cli.main(["--opponent-gid", "bad gid!"]) == 2
+
+
+def test_refuses_without_the_env_config_half(cli_env, monkeypatch, capsys):
+    """The hub image has no peer.toml: COSMOS_LEAGUE_COUNTED in the SSH session IS the
+    config half of the double-arm, and the CLI refuses up front without it."""
+    monkeypatch.delenv("COSMOS_LEAGUE_COUNTED", raising=False)
+    monkeypatch.setattr(counted_cli.sys.stdin, "isatty", lambda: True, raising=False)
+    assert counted_cli.main(ARGS) == 2
+    assert "COSMOS_LEAGUE_COUNTED" in capsys.readouterr().err

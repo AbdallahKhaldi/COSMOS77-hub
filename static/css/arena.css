@@ -343,7 +343,7 @@ body.game .stage canvas { display: block; width: 100%; height: 100%; }
 
 /* 2D belief heatmap — the mandated grid (DOM, not WebGL) */
 .heatmap {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  display: grid; grid-template-columns: repeat(var(--grid-n, 7), 1fr); gap: 3px;
   aspect-ratio: 1; user-select: none;
 }
 .heatmap .cell {

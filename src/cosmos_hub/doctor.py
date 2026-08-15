@@ -82,7 +82,8 @@ async def post_doctor(request: Request) -> dict[str, Any] | JSONResponse:
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(422, "body must be a JSON object")
-    url, cop, thief, gid = _validated(body, request.app.state.challenge_resolver)
+    url, cop, thief, gid = await asyncio.to_thread(
+        _validated, body, request.app.state.challenge_resolver)
     gate: ChallengeGate = request.app.state.challenge_gate
     gate.admit()
     gate.note_started()  # a spawned doctor consumes budget even if it later fails

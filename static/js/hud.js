@@ -52,7 +52,8 @@ export function createHud({ perspective, onPerspective, onMode }) {
     hero: $("hero"), tacpanel: $("tacpanel"),
   };
 
-  /* build the 49-cell heatmap grid once */
+  /* build the GRID² heatmap once (GRID is settled by setGrid() before createHud) */
+  els.heatmap.style.setProperty("--grid-n", String(GRID));
   const cells = [];
   for (let i = 0; i < GRID * GRID; i += 1) {
     const d = document.createElement("div");
@@ -212,7 +213,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
     }
     const v = state.view;
     els.windowLine.textContent = v
-      ? `W${state.currentWindow}/${state.windowsTotal} · STEP ${v.step ?? 0}/35 · BARRIERS ${v.barriers_left ?? "—"}`
+      ? `W${state.currentWindow}/${state.windowsTotal} · STEP ${v.step ?? 0} · BARRIERS ${v.barriers_left ?? "—"}`
       : `awaiting engagement`;
   }
 

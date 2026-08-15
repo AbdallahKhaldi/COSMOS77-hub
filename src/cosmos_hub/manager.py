@@ -1,23 +1,19 @@
 """Subprocess lifecycle: standing serve <-> configured runs (contract: Run lifecycle).
 
 Two-process rule: the hub only SPAWNS the agent repos (``cwd=<repo>``), never imports
-them.  One run at a time; a hold-file (SSH counted run) stands the manager down; the
-``/mcp`` window-parity relay is healed like the agents but never gates settlement.
-RLock everywhere: routes call on the loop, the supervisor ticks in a worker thread.
+them.  One run at a time; a hold-file (SSH counted) stands the manager down; the /mcp
+relay is healed like the agents.  RLock everywhere: routes call on the loop, the
+supervisor ticks in a worker thread.
 """
 
 from __future__ import annotations
 
-import contextlib
 import logging
-import os
-import signal
 import subprocess
 import threading
-import time
 from collections.abc import Callable
 
-from . import argvs, seeds
+from . import argvs, holdfile, procs, seeds
 from .config import RELAY, ROLES, Settings
 from .runspec import CountedRefusedError, RunRefusedError, RunSpec
 
@@ -33,6 +29,7 @@ class Manager:
         self.settings, self.notify = settings, notify or (lambda _e, _p: None)
         self.procs: dict[str, subprocess.Popen[bytes]] = {}
         self.active: RunSpec | None = None
+        self.active_source = ""  # who started the run: demo | challenge | admin
         self._logs, self._lock = [], threading.RLock()  # open log handles + state lock
 
     def _spawn(self, name: str, argv: list[str], tag: str, vary_seed: int | None = None,
@@ -48,24 +45,12 @@ class Manager:
         return proc
 
     def _kill_all(self) -> None:
-        """Terminate -> kill every tracked process group, then forget the handles."""
-        for name, proc in self.procs.items():
-            for sig, wait_s in ((signal.SIGTERM, 5.0), (signal.SIGKILL, 3.0)):
-                if proc.poll() is not None:
-                    break
-                with contextlib.suppress(ProcessLookupError, PermissionError):
-                    os.killpg(proc.pid, sig)
-                deadline = time.monotonic() + wait_s
-                while proc.poll() is None and time.monotonic() < deadline:
-                    time.sleep(0.05)
-            log.info("stopped %s pid=%d rc=%s", name, proc.pid, proc.poll())
-        self.procs.clear()
-        while self._logs:
-            self._logs.pop().close()
+        """Staged TERM->KILL of every tracked process group (procs.kill_all)."""
+        procs.kill_all(self.procs, self._logs)
 
     def hold_active(self) -> bool:
-        """True while the SSH counted hold-file exists — the manager must stand down."""
-        return self.settings.hold_file.exists()
+        """A FRESH counted hold-file (stale ones self-heal in holdfile.py, loudly)."""
+        return holdfile.hold_active(self.settings)
 
     def start_standing(self) -> None:
         """Put agents in await mode (406 endpoints up) and the relay behind /mcp."""
@@ -93,12 +78,13 @@ class Manager:
             self._kill_all()
             for out in argvs.run_out_dirs(spec, self.settings):
                 out.mkdir(parents=True, exist_ok=True)
+            self.active_source = source
             vary, dwell = seeds.run_seed(spec), seeds.turn_delay_ms(spec)
             for role in argvs.active_roles(spec, self.settings):
                 self.procs[role] = self._spawn(role, argvs.run_argv(role, spec, self.settings),
                                                spec.out_stamp, vary_seed=vary, dwell_ms=dwell)
-            relay = argvs.relay_argv(self.settings, spec)
-            self.procs[RELAY] = self._spawn(RELAY, relay, spec.out_stamp)
+            self.procs[RELAY] = self._spawn(RELAY, argvs.relay_argv(self.settings, spec),
+                                            spec.out_stamp)
             self.active = spec
         self.notify("run_started", {"run_id": spec.out_stamp, "kind": spec.kind,
                                     "opponent": spec.opponent_gid, "windows": spec.windows})
@@ -142,8 +128,9 @@ class Manager:
                     self.notify("run_ended", {"run_id": ended.out_stamp, "kind": ended.kind})
                     self.start_standing()
                 elif RELAY not in self.procs or self.procs[RELAY].poll() is not None:
-                    relay = argvs.relay_argv(self.settings, self.active)
-                    self.procs[RELAY] = self._spawn(RELAY, relay, self.active.out_stamp)
+                    self.procs[RELAY] = self._spawn(
+                        RELAY, argvs.relay_argv(self.settings, self.active),
+                        self.active.out_stamp)
                 return
             if not self.procs or any(p.poll() is not None for p in self.procs.values()):
                 self._kill_all()

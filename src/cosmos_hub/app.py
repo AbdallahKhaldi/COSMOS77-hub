@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
@@ -33,13 +34,22 @@ from .livehub import LiveHub
 from .manager import Manager
 
 _TICK_S = 1.0
+log = logging.getLogger(__name__)
 
 
 async def _supervise(manager: Manager) -> None:
-    """Drive the manager state machine off the loop (tick blocks on kills)."""
+    """Drive the manager state machine off the loop (tick blocks on kills).
+
+    One exception out of tick() (missing venv binary, full disk) must not kill the
+    task silently — that would leave dead agents unhealed and demos 409ing forever
+    with a healthy /health. Log and keep ticking.
+    """
     while True:
         await asyncio.sleep(_TICK_S)
-        await asyncio.to_thread(manager.tick)
+        try:
+            await asyncio.to_thread(manager.tick)
+        except Exception:
+            log.exception("supervisor tick failed; continuing")
 
 
 @contextlib.asynccontextmanager

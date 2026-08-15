@@ -7,6 +7,7 @@ one concurrent run, 10 per day, 90 s cooldown.  State is in-memory by design.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 import time
@@ -97,21 +98,17 @@ def build_spec(body: dict[str, Any], resolver: Resolver) -> RunSpec:
     single = str(body.get("their_single_url") or "") or None
     cop = str(body.get("their_cop_url") or "") or None
     thief = str(body.get("their_thief_url") or "") or None
-    if single:
-        check_url(single, resolver)
-    elif cop and thief:
-        check_url(cop, resolver)
-        check_url(thief, resolver)
+    if single or (cop and thief):
+        for url in filter(None, (single, cop, thief)):
+            check_url(url, resolver)
     else:
         raise HTTPException(422, "provide their_cop_url + their_thief_url, or their_single_url")
     try:
         return RunSpec(
-            kind=kind,
-            opponent_gid=_gid(body),
+            kind=kind, opponent_gid=_gid(body),
             their_cop_url=cop, their_thief_url=thief, their_single_url=single,
             scent_model=clean_scent_model(body.get("scent_model")),
-            windows=1 if kind == "f1" else 6,
-            out_stamp=fresh_stamp(kind),
+            windows=1 if kind == "f1" else 6, out_stamp=fresh_stamp(kind),
         )
     except RunRefusedError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -138,7 +135,8 @@ async def post_challenge(request: Request) -> dict[str, str]:
     if manager.active is not None:
         raise HTTPException(409, "a run is already live — watch it, then challenge again")
     gate.admit()
-    spec = build_spec(body, request.app.state.challenge_resolver)
+    spec = await asyncio.to_thread(  # DNS off the loop: slow hostnames must not stall the hub
+        build_spec, body, request.app.state.challenge_resolver)
     try:
         run_id = manager.start_run(spec, source="challenge")
     except CountedRefusedError as exc:

@@ -39,13 +39,18 @@ async def start_demo(request: Request) -> dict[str, object]:
     if not isinstance(body, dict):
         body = {}
     active = manager.active
+    if active is not None and manager.active_source != "demo":
+        # an anonymous demo press must NEVER kill a real game (challenge/admin):
+        # attach the viewer to what is playing instead — watching is free
+        return {"run_id": active.out_stamp, "watch": "live", "joined": True,
+                "server_paced": True}
     if active is not None and not body:
-        # a plain press while a pursuit runs: watching is free, no new game
+        # a plain press while a demo runs: watching is free, no new game
         return {"run_id": active.out_stamp, "watch": "live", "joined": True,
                 "server_paced": True}
     gate.admit()  # raises HTTPException 429 on cooldown/quota
     if active is not None:
-        manager.stop_run()  # chosen rules mean a NEW game, never a silent join
+        manager.stop_run()  # chosen rules mean a NEW demo, never a silent join
     settings = request.app.state.settings
     base = custom.league_config(settings)
     rules = custom.wanted(body, base)
