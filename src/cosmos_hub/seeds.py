@@ -43,10 +43,17 @@ def public_mcp_url(public_url: str, role: str) -> str | None:
 
 def spawn_env(vary_seed: int | None = None, role: str = "",
               turn_delay_ms: int | None = None,
-              public_url: str = "") -> dict[str, str]:
-    """Hub env minus VIRTUAL_ENV; seed = per-role variety, dwell = spectator pacing."""
+              public_url: str = "", ledger_file: str = "") -> dict[str, str]:
+    """Hub env minus VIRTUAL_ENV; seed = per-role variety, dwell = spectator pacing.
+
+    ``ledger_file`` points the agents' rule-52 ledger at the volume twin so runtime
+    advances survive redeploys WITHOUT touching the repo working tree (the counted
+    arming gate requires that tree clean).
+    """
     env = dict(os.environ)
     env.pop("VIRTUAL_ENV", None)
+    if ledger_file:
+        env["COSMOS_LEDGER_FILE"] = ledger_file
     if vary_seed is not None:
         env["COSMOS_VARY_SEED"] = str(vary_seed + (1 if role == "thief" else 0))
     if turn_delay_ms:

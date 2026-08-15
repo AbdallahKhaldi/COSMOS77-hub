@@ -58,29 +58,43 @@ def _counted_entries(path: Path) -> int:
 
 
 def sync_ledger(settings: Settings) -> None:
-    """Direction-aware rule-52 ledger sync between the cop repo and the volume.
+    """Rule-52 ledger sync: the VOLUME is the runtime home; the repo file stays committed.
 
-    Whichever copy holds MORE counted entries wins (a redeploy bakes the freshly
-    cloned git-committed ledger, which may be newer than a stale volume copy — and
-    vice versa after an on-hub counted run).  Ties keep the repo copy, the committed
-    truth.  The winner's bytes are mirrored to the other side; on a volume-backed
-    deploy the repo path then becomes a symlink to the volume twin so every runtime
-    advance by the agents lands on the volume and survives a restart.
+    An earlier revision symlinked the repo path onto the volume twin so runtime
+    advances would survive redeploys — and quietly made ``git status`` in the cop
+    repo report a typechange, which the rule-53 clean-tree gate correctly reads as
+    dirty: the counted run REFUSES to arm on the very machine built to run it.
+    Now nothing under the repo is ever replaced: the agents write the volume twin
+    directly (``COSMOS_LEDGER_FILE`` in their spawn env), a fresh redeploy seeds the
+    volume from the committed file when the repo is ahead, and a volume that is
+    ahead is only LOGGED — committing it back is the close-out step, a human act.
     """
     repo_path, volume_path = settings.repo_ledger_file, settings.ledger_file
-    repo_n, volume_n = _counted_entries(repo_path), _counted_entries(volume_path)
-    if repo_n < 0 and volume_n < 0:
-        return  # no ledger anywhere yet: the agents create it on first record
     try:
-        if volume_n > repo_n:  # volume is ahead (post-redeploy): restore into the repo
-            repo_path.parent.mkdir(parents=True, exist_ok=True)
-            repo_path.unlink(missing_ok=True)
-            shutil.copyfile(volume_path, repo_path)
-        elif not repo_path.is_symlink():  # repo wins (or tie): mirror it to the volume
+        if repo_path.is_symlink():  # repair the earlier design: restore the committed file
+            target_bytes = volume_path.read_bytes() if volume_path.exists() else b"{}"
+            repo_path.unlink()
+            repo_path.write_bytes(target_bytes)
+            _restore_committed(settings, repo_path)
+        repo_n, volume_n = _counted_entries(repo_path), _counted_entries(volume_path)
+        if repo_n < 0 and volume_n < 0:
+            return  # no ledger anywhere yet: the agents create it on first record
+        if repo_n > volume_n:  # fresh redeploy carrying a newer committed ledger
             volume_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(repo_path, volume_path)
-        if settings.volume_backed and not repo_path.is_symlink():
-            repo_path.unlink(missing_ok=True)
-            repo_path.symlink_to(volume_path)
+        elif volume_n > repo_n:
+            log.info("volume ledger is ahead of the committed one (%d > %d): "
+                     "commit it back during close-out", volume_n, repo_n)
     except OSError:
         log.exception("ledger sync failed (repo=%s volume=%s)", repo_path, volume_path)
+
+
+def _restore_committed(settings: Settings, repo_path: Path) -> None:
+    """Best-effort ``git checkout`` of the ledger so the tree returns to CLEAN."""
+    import subprocess
+
+    with contextlib.suppress(Exception):
+        subprocess.run(
+            ["git", "checkout", "--", "artifacts/league_ledger.json"],
+            cwd=str(settings.cop_repo), capture_output=True, timeout=30, check=False,
+        )

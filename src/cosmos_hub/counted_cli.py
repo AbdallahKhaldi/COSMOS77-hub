@@ -113,10 +113,10 @@ def main(argv: list[str] | None = None) -> int:
             return 4
         relay = subprocess.Popen(argvs.relay_argv(settings, spec),
                                  cwd=str(settings.repo(config.RELAY)),
-                                 env=seeds.spawn_env())
+                                 env=seeds.spawn_env(ledger_file=str(settings.ledger_file)))
         procs = [
             subprocess.Popen(commands[role], cwd=str(settings.repo(role)),
-                             env=seeds.spawn_env())
+                             env=seeds.spawn_env(ledger_file=str(settings.ledger_file)))
             for role in roles
         ]
         rcs = [proc.wait() for proc in procs]
@@ -136,8 +136,11 @@ def main(argv: list[str] | None = None) -> int:
             persist.sync_ledger(settings)
     print("== series finished; when settled, send ONE report (still your call) ==")
     print(f"  (cwd {settings.cop_repo})\n"
-          f"  $ uv run cosmos-cop report {shared_out}/result_<gid>.json"
+          f"  $ COSMOS_LEDGER_FILE={settings.ledger_file} \\\n"
+          f"    uv run cosmos-cop report {shared_out}/result_<gid>.json"
           " --counted --send")
+    print("  (COSMOS_LEDGER_FILE keeps the rule-52 counters reading the volume ledger"
+          " the series just advanced.)")
     return max(rcs)
 
 

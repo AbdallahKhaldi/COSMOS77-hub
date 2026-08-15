@@ -37,10 +37,11 @@ class Manager:
 
     def _spawn(self, name: str, argv: list[str], tag: str, vary_seed: int | None = None,
                dwell_ms: int | None = None) -> subprocess.Popen[bytes]:
-        """Start one subprocess, logging its output under the hub data dir."""
+        """Start one subprocess; env carries seed/dwell/origin + the volume ledger."""
         self.settings.logs_dir.mkdir(parents=True, exist_ok=True)
         self._logs.append(out := open(self.settings.logs_dir / f"{name}-{tag}.log", "ab"))  # noqa: SIM115
-        env = seeds.spawn_env(vary_seed, name, dwell_ms, self.settings.public_url)
+        env = seeds.spawn_env(vary_seed, name, dwell_ms, self.settings.public_url,
+                              str(self.settings.ledger_file))
         proc = subprocess.Popen(argv, cwd=str(self.settings.repo(name)), env=env, stdout=out,
                                 stderr=subprocess.STDOUT, start_new_session=True)
         log.info("spawned %s (%s) pid=%d", name, tag, proc.pid)
@@ -59,9 +60,8 @@ class Manager:
                     time.sleep(0.05)
             log.info("stopped %s pid=%d rc=%s", name, proc.pid, proc.poll())
         self.procs.clear()
-        for handle in self._logs:
-            handle.close()
-        self._logs.clear()
+        while self._logs:
+            self._logs.pop().close()
 
     def hold_active(self) -> bool:
         """True while the SSH counted hold-file exists — the manager must stand down."""
