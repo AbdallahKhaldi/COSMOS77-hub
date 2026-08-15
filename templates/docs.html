@@ -58,6 +58,39 @@
     keep polling.</p>
   </section>
 
+  <section class="panel" style="margin-bottom:16px">
+    <p class="kicker">The pairing sheet — dialect facts, stated up front (kit playbook, Stage 1)</p>
+    <p class="sub">We follow the community kit
+    (<a href="https://github.com/Imreec/copthief-league-protocol">copthief-league-protocol</a>).
+    So the first window is boring, here is everything a peer implementation wants to know:</p>
+    <ul class="sub" style="margin:8px 0 8px 18px; line-height:1.7">
+      <li><b>Wire:</b> reference-v3 — flat 14-key terms + nonce + signature; the four tools
+        <span class="mono">negotiate / receive_turn / receive_control / submit_audit</span> (SPEC §7.5).
+        <b>Thief moves first</b> each sub-game.</li>
+      <li><b>negotiate, both dialects (WARNINGS 2b):</b> we push first, <i>and</i> every call you make
+        to ours answers <span class="mono">{"ok": true, "message": &lt;our greeting&gt;}</span> — read
+        the agreement from the reply or wait for our push, whichever your build expects.</li>
+      <li><b>Turn messages:</b> ten-key set; unknown keys tolerated and ignored;
+        <span class="mono">timestamp</span> always non-empty ISO-8601; commit =
+        <span class="mono">SHA256(canonical_json(payload)|nonce)</span>, single pipe.</li>
+      <li><b>Audit (WARNINGS 5d):</b> your disclosure is verified against the commitments that
+        <i>arrived in play</i>, not only against itself — clean games see no difference.</li>
+      <li><b>Consensus signature:</b> the reference <b>five-key row</b>
+        (<span class="mono">sub_game_number, roles, result, winner_group, score</span> — per the kit's
+        2026-08-13 correction; <span class="mono">tie</span> stays in the document row only), spaced
+        separators, sign-then-insert.</li>
+      <li><b>Roles:</b> first-sorted group is COP on odd sub-games (kit Stage-3 default).</li>
+      <li><b>Locks:</b> scent <span class="mono">subtractive_chebyshev_v1</span>
+        (<span class="mono">81ebee59…ddf4</span>) · info_mode <span class="mono">belief</span>
+        (<span class="mono">020947da…1202</span>) · wire_shape
+        (<span class="mono">229ae648…d6f7</span>).</li>
+    </ul>
+    <p class="sub"><b>Prefer classic ports?</b> We also play the kit's local topology — cop
+    <span class="mono">:8801</span> / thief <span class="mono">:8802</span> bound to the network, over
+    same-LAN, Tailscale or an ngrok pair — propose a T in the class chat and we bring the laptop.</p>
+  </section>
+
+
   <section class="panel steps" style="margin-bottom:16px">
     <p class="kicker">The seven agreements <span class="sub">(the agreed config, schema 1.2 — full JSON on request)</span></p>
     <div class="step"><b>Board &amp; agents</b><p class="sub">7×7 grid, origin top-left index 0. Cop starts [0,0], thief [3,3]. Two agents, two separate processes, two repos.</p></div>
