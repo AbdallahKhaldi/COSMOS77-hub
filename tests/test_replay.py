@@ -121,3 +121,20 @@ def test_route_serves_builds_and_refuses(client, settings):
     unsettled = "f1-20260809-131313"
     write_json(settings.runs_dir("cop", unsettled) / "log_x-vs-y_g01.json", make_log())
     assert client.get(f"/api/replays/{unsettled}").status_code == 409
+
+
+def test_replay_meta_carries_the_settlement_hash(settings):
+    """The fingerprint both operators read aloud after a game must be ON the page's doc."""
+    import json as _json
+
+    from cosmos_hub import replay as replay_mod
+
+    run = "selfplay-20260101-000001"
+    directory = settings.runs_dir("cop", run)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "result_x.json").write_text(_json.dumps({
+        "game_id": "a-vs-b", "game_uid": "u", "final_result": {"total_score": {}},
+        "mutual_agreement": {"sha256": "ab" * 32, "confirmed": True},
+    }), encoding="utf-8")
+    doc = replay_mod.build(settings, run)
+    assert doc["meta"]["mutual_agreement"]["sha256"] == "ab" * 32

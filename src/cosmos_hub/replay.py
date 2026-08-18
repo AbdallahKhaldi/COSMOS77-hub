@@ -71,7 +71,11 @@ def build(settings: Settings, run_id: str) -> dict[str, Any]:
     return {
         "meta": {"run_id": run_id, "game_id": result.get("game_id"),
                  "game_uid": result.get("game_uid"), "windows": len(logs),
-                 "final_result": result.get("final_result"), "built_ts": time.time()},
+                 "final_result": result.get("final_result"),
+                 # the settlement fingerprint BOTH teams read aloud after a game —
+                 # byte-equal on both sides proves the two reports will agree (rule 35)
+                 "mutual_agreement": result.get("mutual_agreement"),
+                 "built_ts": time.time()},
         "frames": frames,
         "verify": {"per_step": per_step, "verdict": verdict},
         "belief_trace": belief_trace(frames, belief_index),

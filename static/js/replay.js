@@ -395,6 +395,18 @@ fetch(DOC_URL || "/api/replays/", { headers: { Accept: "application/json" }, cac
       (!runId ? "no run · " : "") +
       `${metaInfo.gidA} vs ${metaInfo.gidB} · ${frames.length} frames`;
     $("verdictLine").textContent = "series verdict: " + ((d.verify && d.verify.verdict) || "?");
+    const mutual = meta.mutual_agreement && meta.mutual_agreement.sha256;
+    if (mutual) {
+      const line = document.createElement("div");
+      line.className = "mono";
+      line.style.cssText = "font-size:12px;margin-top:6px;word-break:break-all;cursor:pointer;color:#ffd400";
+      line.title = "click to copy — compare with the other team in chat; byte-equal = both reports will agree";
+      line.textContent = "settlement sha256: " + mutual;
+      line.onclick = () => navigator.clipboard && navigator.clipboard.writeText(mutual)
+        .then(() => { line.textContent = "settlement sha256: COPIED ✓"; 
+                      setTimeout(() => line.textContent = "settlement sha256: " + mutual, 1200); });
+      $("verdictLine").after(line);
+    }
     const tbody = $("scoreTable").querySelector("tbody");
     tbody.innerHTML = "";
     const rows = (meta.per_window || []).map((w) => (
