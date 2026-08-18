@@ -23,6 +23,7 @@ from . import (
     evidence,
     pages,
     pair,
+    pairings,
     proxy,
     replay,
     secrets_boot,
@@ -91,7 +92,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     app.state.challenge_resolver = challenge.default_resolver
     app.state.proxy_client = proxy.make_client()  # closed by the lifespan teardown
     for router in (pages.router, proxy.router, challenge.router, doctor.router, demo.router,
-                   pair.router, admin.router, evidence.router, replay.router,
+                   pair.router, admin.router, evidence.router, pairings.router, replay.router,
                    status_api.router, ws.router):
         app.include_router(router)
     if settings.static_dir.is_dir():

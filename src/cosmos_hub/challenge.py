@@ -1,13 +1,15 @@
 """Public challenge endpoint — no auth, hard rate limits (contract: Run lifecycle).
 
 Anyone may POST https URLs and get a friendly run (f1 = 1 window, f2 = 6).  Rails:
-https-only, hostname must resolve to public addresses (SSRF guard), URLs <= 300 chars,
-one concurrent run, 10 per day, 90 s cooldown.  State is in-memory by design.
+https-only, public-resolving hostnames (SSRF guard), URLs <= 300 chars, one concurrent
+run, 10/day, 90 s cooldown.  In-memory state by design.  An installed pairing config
+(pairings.py) replaces our constitution for that opponent automatically.
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import ipaddress
 import socket
 import time
@@ -17,6 +19,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 
+from . import pairings
 from .manager import Manager
 from .runspec import (
     GID_RE,
@@ -56,11 +59,10 @@ def check_url(url: str, resolver: Resolver = default_resolver) -> None:
         raise HTTPException(422, f"hostname does not resolve: {host}") from exc
     for address in addresses:
         try:
-            ip = ipaddress.ip_address(address.split("%")[0])
+            if not ipaddress.ip_address(address.split("%")[0]).is_global:
+                raise HTTPException(422, "private, loopback and reserved addresses are refused")
         except ValueError as exc:
             raise HTTPException(422, "hostname resolved to a non-IP address") from exc
-        if not ip.is_global:
-            raise HTTPException(422, "private, loopback and reserved addresses are refused")
 
 
 class ChallengeGate:
@@ -127,16 +129,17 @@ async def post_challenge(request: Request) -> dict[str, str]:
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(422, "body must be a JSON object")
-    for value in body.values():
-        if isinstance(value, str) and "--counted" in value:
-            raise HTTPException(403, "counted is never web-reachable")
-    gate: ChallengeGate = request.app.state.challenge_gate
+    if any(isinstance(v, str) and "--counted" in v for v in body.values()):
+        raise HTTPException(403, "counted is never web-reachable")
     manager: Manager = request.app.state.manager
     if manager.active is not None:
         raise HTTPException(409, "a run is already live — watch it, then challenge again")
+    gate: ChallengeGate = request.app.state.challenge_gate
     gate.admit()
-    spec = await asyncio.to_thread(  # DNS off the loop: slow hostnames must not stall the hub
-        build_spec, body, request.app.state.challenge_resolver)
+    spec = await asyncio.to_thread(build_spec, body,  # DNS off the loop
+                                   request.app.state.challenge_resolver)
+    if installed := pairings.active_pairing_config(request.app.state.settings, spec.opponent_gid):
+        spec = dataclasses.replace(spec, config_path=installed)  # their agreed file, not ours
     try:
         run_id = manager.start_run(spec, source="challenge")
     except CountedRefusedError as exc:
