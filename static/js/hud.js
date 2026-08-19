@@ -130,7 +130,8 @@ export function createHud({ perspective, onPerspective, onMode }) {
     // the wire monitor: who called what, which direction, how long — live
     const arrow = p.direction === "out" ? "→" : "←";
     const took = typeof p.ms === "number" ? " · " + Math.round(p.ms) + "ms" : "";
-    stripPush("WIRE", "", arrow + " " + (p.tool || "?") + " @" + (p.peer || "?") +
+    const who = p.who ? p.who + " " : ""; // f2 interleaves both our roles in one stream
+    stripPush("WIRE", "", who + arrow + " " + (p.tool || "?") + " @" + (p.peer || "?") +
       " " + (p.status || "") + took);
   }
 
