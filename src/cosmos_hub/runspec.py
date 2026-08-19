@@ -91,11 +91,11 @@ def web_runspec(body: dict[str, object]) -> RunSpec:
     gid = str(body.get("opponent_gid") or "cosmos77-mirror")
     if not GID_RE.match(gid):
         raise RunRefusedError("opponent_gid must match [A-Za-z0-9._-]{1,64}")
-    windows = 1 if kind == "f1" else 6
-    if kind == "selfplay":
-        windows = int(body.get("windows") or 6)
-        if not 1 <= windows <= 6:
-            raise RunRefusedError("windows must be 1..6")
+    # admin may shorten any friendly (pairing smoke = 2 windows, one per direction);
+    # the PUBLIC challenge lane never reaches here — its windows stay pinned 1 or 6
+    windows = int(body.get("windows") or (1 if kind == "f1" else 6))
+    if not 1 <= windows <= 6:
+        raise RunRefusedError("windows must be 1..6")
     return RunSpec(
         kind=kind,
         opponent_gid=gid,

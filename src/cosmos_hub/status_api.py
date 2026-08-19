@@ -76,6 +76,21 @@ async def api_status(request: Request) -> dict[str, Any]:
     }
 
 
+def _result_summary(result_path: Path, ours: str) -> dict[str, Any]:
+    """League-row fields from a settled result artifact; {} when unreadable."""
+    try:
+        final = json.loads(result_path.read_text(encoding="utf-8"))["final_result"]
+        totals = final["total_score"]
+        them_gid = next((g for g in totals if g != ours), None)
+        winner = final.get("winner_group")
+        verdict = ("tie" if final.get("series_tie") or winner is None
+                   else "win" if winner == ours else "loss")
+        return {"opponent": them_gid, "us": totals.get(ours),
+                "them": totals.get(them_gid), "verdict": verdict}
+    except Exception:  # a corrupt artifact must not take the league page down
+        return {}
+
+
 @router.get("/api/runs")
 async def api_runs(request: Request) -> dict[str, Any]:
     """Known runs (from the data volume's runs/ trees) with settlement and replay flags."""
@@ -89,11 +104,14 @@ async def api_runs(request: Request) -> dict[str, Any]:
             if not entry.is_dir():
                 continue
             row = index.setdefault(entry.name, {
-                "run_id": entry.name, "settled": False, "windows_logged": 0,
+                "run_id": entry.name, "kind": entry.name.split("-")[0],
+                "settled": False, "windows_logged": 0,
                 "replay": (settings.replays_dir / f"{entry.name}.json").is_file(),
                 "mtime": 0.0, "_logs": set(),
             })
-            row["settled"] = row["settled"] or any(entry.glob("result_*.json"))
+            if not row["settled"] and (results := sorted(entry.glob("result_*.json"))):
+                row["settled"] = True
+                row.update(_result_summary(results[0], settings.standing_gids))
             row["_logs"].update(p.name for p in entry.glob("log_*_g*.json"))
             row["mtime"] = max(row["mtime"], entry.stat().st_mtime)
     runs = sorted(index.values(), key=lambda r: r["run_id"], reverse=True)

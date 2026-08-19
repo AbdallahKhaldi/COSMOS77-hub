@@ -96,6 +96,7 @@
   /* V2: legacy runs with no replay data (all-dash rows) fold under a
      collapsed details — the headline table shows replayable runs only. */
   function isLegacy(r) {
+    if (r.replay === true) return false; // replayable = headline, even if scores failed to parse
     if (r.has_replay === false || r.replay === false || r.replay_available === false) return true;
     var s = r.score || {};
     var us = s.us != null ? s.us : r.us;

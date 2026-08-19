@@ -107,3 +107,17 @@ def test_report_dry_run_needs_settled_result(client):
     assert response.status_code == 404
     bad = client.post("/api/admin/report-dry-run", json={"run_id": "../escape"})
     assert bad.status_code == 422
+
+
+def test_admin_f2_accepts_a_short_window_count(client):
+    # pairing smoke after an opponent fix: 2 windows = one per role direction
+    client.post("/api/admin/login", json={"password": "hub-pw"})
+    bad = client.post("/api/admin/run", json={"kind": "f2", "opponent_gid": "rival",
+                                              "windows": 9})
+    assert bad.status_code == 409  # admin maps RunRefusedError to 409
+    response = client.post("/api/admin/run", json={
+        "kind": "f2", "opponent_gid": "rival", "windows": 2,
+        "their_cop_url": "https://c.example/mcp", "their_thief_url": "https://t.example/mcp"})
+    assert response.status_code == 200
+    argv = client.app.state.manager.procs["cop"].argv
+    assert argv[argv.index("--windows") + 1] == "2"
