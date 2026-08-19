@@ -103,6 +103,14 @@ export function createHud({ perspective, onPerspective, onMode }) {
     stripPush("SYS", "", text);
   }
 
+  function wireLine(p) {
+    // the wire monitor: who called what, which direction, how long — live
+    const arrow = p.direction === "out" ? "→" : "←";
+    const took = typeof p.ms === "number" ? " · " + Math.round(p.ms) + "ms" : "";
+    stripPush("WIRE", "", arrow + " " + (p.tool || "?") + " @" + (p.peer || "?") +
+      " " + (p.status || "") + took);
+  }
+
   /* ------------------------------ chrome bits ---------------------------- */
   function setPerspectiveChrome(p) {
     const police = p === "police";
@@ -277,6 +285,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
 
   return {
     showSlam: slam,
+    wireLine,
     render(state, meta) {
       runId = state.runId;
       renderBanner(state);

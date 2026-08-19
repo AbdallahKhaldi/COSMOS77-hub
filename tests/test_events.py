@@ -101,3 +101,36 @@ def test_window_end_whitelist_never_carries_records():
     dumped = json.dumps(payload)
     assert "nonce" not in dumped and "commit" not in dumped and "records" not in dumped
     assert payload["settled"] is True and payload["sub_game"] == 1
+
+
+def test_wire_lines_stream_to_both_perspectives(settings):
+    """The monitor: a {"t":"wire"} events line becomes a wire envelope on BOTH feeds."""
+    import json as _json
+
+    from cosmos_hub.broadcast import Broadcaster
+    from cosmos_hub.envelopes import EnvelopeLog
+    from cosmos_hub.events import RunTailer
+
+    run = "wiretest-1"
+    directory = settings.runs_dir("cop", run)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "events.jsonl").write_text(
+        _json.dumps({"t": "wire", "direction": "out", "tool": "receive_turn",
+                     "peer": "https://them/mcp", "status": "ok", "ms": 33.0}) + "\n",
+        encoding="utf-8")
+    log = EnvelopeLog(Broadcaster(), run)
+    tailer = RunTailer(settings.run_dirs(run), log)
+    tailer._sweep_events(tailer.sides[0]) if hasattr(tailer, "_sweep_events") else None
+    # drive one poll through the public seam
+    import asyncio
+
+    async def one_pass():
+        stop = asyncio.Event()
+        task = asyncio.get_running_loop().create_task(tailer.run(stop))
+        await asyncio.sleep(0.4)
+        stop.set()
+        await task
+    asyncio.run(one_pass())
+    wires = [e for e in log.broadcaster.history if e["type"] == "wire"]
+    assert len(wires) == 2, "one wire line must reach BOTH perspectives"
+    assert wires[0]["payload"]["tool"] == "receive_turn"

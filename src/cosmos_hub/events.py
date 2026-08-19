@@ -52,7 +52,13 @@ class RunTailer:
         for raw in chunk[:complete].splitlines():
             with contextlib.suppress(json.JSONDecodeError, UnicodeDecodeError):
                 line = json.loads(raw)
-                role = line.get("role") if isinstance(line, dict) else None
+                if not isinstance(line, dict):
+                    continue
+                if line.get("t") == "wire":  # the monitor: both perspectives see the traffic
+                    for perspective in PERSPECTIVES:
+                        self.log.emit("wire", perspective, line)
+                    continue
+                role = line.get("role")
                 if role in PERSPECTIVES:
                     self.log.emit("view", role, view_payload(line))
 
