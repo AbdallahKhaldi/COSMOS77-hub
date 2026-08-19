@@ -67,6 +67,17 @@
     <button class="p-cop" data-p="police" aria-pressed="true">🚓 Police</button>
     <button class="p-thief" data-p="thief" aria-pressed="false">🚗 Thief</button>
   </div>
+  <!-- comms console: every wire call, radio hint and seal, scrolling — not rotating -->
+  <div class="glass console" id="console" role="log" aria-label="comms console — live wire, radio and seals">
+    <div class="con-head">
+      <h3>Comms console <span class="lit">· wire · radio · seals</span></h3>
+      <button class="tac-collapse" id="conToggle" aria-expanded="true" aria-controls="conBody"
+              title="collapse the comms console">▾</button>
+    </div>
+    <div class="con-body" id="conBody">
+      <div class="con-list" id="conList"></div>
+    </div>
+  </div>
 </div>
 
 <!-- bottom-left: collapsible tactical panel (mandated belief heatmap) -->
@@ -88,6 +99,10 @@
         <b>SCENT</b> = the raw pheromone field we can smell.</p>
       <div class="heatmap" id="heatmap" role="img" aria-label="belief heatmap over the 7 by 7 board"></div>
       <div class="hm-legend" id="hmLegend"><span>POSTERIOR P(OPPONENT)</span><span>no data</span></div>
+      <div class="tac-rows">
+        <div class="tac-row"><span class="tag">radio</span><span id="rowHint">— no intercepts yet</span></div>
+        <div class="tac-row"><span class="tag seal">seal</span><span id="rowSeal">— no commits yet</span></div>
+      </div>
       <div class="toggles">
         <button class="tgl" id="tglScent" aria-pressed="true">3D scent decals</button>
       </div>

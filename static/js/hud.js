@@ -50,6 +50,8 @@ export function createHud({ perspective, onPerspective, onMode }) {
     nameUs: $("nameUs"), nameThem: $("nameThem"), pips: $("pips"),
     windowLine: $("windowLine"),
     hero: $("hero"), tacpanel: $("tacpanel"),
+    conPanel: $("console"), conBody: $("conBody"), conList: $("conList"),
+    rowHint: $("rowHint"), rowSeal: $("rowSeal"),
   };
 
   /* build the GRID² heatmap once (GRID is settled by setGrid() before createHud) */
@@ -86,11 +88,32 @@ export function createHud({ perspective, onPerspective, onMode }) {
     els.stripLine.classList.add("roll");
   }
 
+  const CONSOLE_KEEP = 90;
+
+  function consolePush(tag, cls, text) {
+    // the at-a-glance surface: every line SCROLLS here forever, nothing rotates away
+    if (!els.conList) return; // pages without the console (replay cinema) skip it
+    const row = document.createElement("div");
+    row.className = "con-row";
+    const t = document.createElement("span");
+    t.className = "con-tag" + (cls ? " " + cls : "") + " t-" + tag.toLowerCase();
+    t.textContent = tag;
+    const body = document.createElement("span");
+    body.className = "con-text";
+    body.textContent = new Date().toTimeString().slice(0, 8) + " " + text;
+    row.append(t, body);
+    els.conList.appendChild(row);
+    while (els.conList.childElementCount > CONSOLE_KEEP) els.conList.firstElementChild.remove();
+    const b = els.conBody;
+    if (b) b.scrollTop = b.scrollHeight; // follow the feed
+  }
+
   function stripPush(tag, cls, text) {
     stripQ.push({ tag, cls, text });
     if (stripQ.length > STRIP_KEEP) stripQ.shift();
     stripIdx = stripQ.length - 1;
     stripShow(stripQ[stripIdx]);
+    consolePush(tag, cls, text);
   }
 
   setInterval(() => { // alternate through recent lines, unobtrusively
@@ -194,6 +217,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
         lastHintText = latest;
         const who = state.perspective === "police" ? "🚗 ROGUE" : "🚓 DETECTIVE";
         stripPush("RADIO", "", who + " · " + latest);
+        if (els.rowHint) els.rowHint.textContent = who + " · " + latest;
       }
     }
     const commits = state.commits;
@@ -202,6 +226,7 @@ export function createHud({ perspective, onPerspective, onMode }) {
       if (c.hash !== lastCommitHash) {
         lastCommitHash = c.hash;
         stripPush("SEAL", "seal", fmtHash(c.hash) + "… · step " + c.step + " · SHA-256 SEALED");
+        if (els.rowSeal) els.rowSeal.textContent = fmtHash(c.hash) + "… · step " + c.step;
       }
     }
   }
@@ -339,6 +364,20 @@ export function createHud({ perspective, onPerspective, onMode }) {
           onPerspective(b.dataset.p);
         });
       });
+      // collapsible comms console — same fold gesture as the tactical panel
+      const conToggle = $("conToggle");
+      if (conToggle && els.conPanel) {
+        const setFolded = (c) => {
+          els.conPanel.classList.toggle("collapsed", c);
+          conToggle.setAttribute("aria-expanded", String(!c));
+          conToggle.title = (c ? "expand" : "collapse") + " the comms console";
+        };
+        conToggle.addEventListener("click", () =>
+          setFolded(!els.conPanel.classList.contains("collapsed")));
+        if (window.matchMedia && window.matchMedia("(max-width: 900px)").matches) {
+          setFolded(true); // small screens boot folded, the world stays clear
+        }
+      }
       // collapsible tactical panel — one tap folds it to a small chip
       const tacToggle = $("tacToggle");
       if (tacToggle && els.tacpanel) {
