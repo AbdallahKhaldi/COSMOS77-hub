@@ -50,7 +50,8 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     HUB_COP_REPO=/app/COSMOS77-cop \
     HUB_THIEF_REPO=/app/COSMOS77-thief \
     HUB_DATA_DIR=/data \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    TZ=Asia/Jerusalem
 
 WORKDIR /app/COSMOS77-hub
 EXPOSE 8080
